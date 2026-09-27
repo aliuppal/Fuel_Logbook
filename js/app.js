@@ -182,7 +182,9 @@ function renderOverview(C, fills){
   $("sCpd").textContent = pDist > 0 ? money(pCost / dOut(pDist)) : "–";
   $("sCpdS").textContent = pDist > 0 ? "from " + priced.length + " priced tanks" : "Add prices to see this";
   $("sDist").innerHTML = fmt(dOut(overall.dist), 0) + `<small>${dU()}</small>`;
-  $("sDistS").textContent = fmt(vOut(overall.lit), 1) + " " + vU() + " of fuel";
+  // Distance is counted from the first full tank, so "since" is that fill-up's date.
+  const firstSeg = segs[0], startFill = firstSeg && list.find(e => e.odo === list.find(x => x.id === firstSeg.id).odo - firstSeg.dist);
+  $("sDistS").textContent = fmt(vOut(overall.lit), 1) + " " + vU() + " of fuel" + (startFill ? " · since " + longDate(startFill.date) : "");
 
   const paid = list.filter(e => e.paid > 0);
   const spendFor = arr => ({card: sum(arr.filter(isCard), e => e.paid), self: sum(arr.filter(e => !isCard(e)), e => e.paid)});
