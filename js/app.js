@@ -3,7 +3,7 @@ import { cloudConfigured, getUser, signInWithGoogle, signOut, onAuthChange, open
 const KM_PER_MI = 1.609344, GAL = {US:3.785411784, UK:4.54609};
 const MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 const MONL = ["January","February","March","April","May","June","July","August","September","October","November","December"];
-let entries = [], settings = {currency:"$", gallon:"US", odoUnit:"km"};
+let entries = [], settings = {currency:"USD", gallon:"US", odoUnit:"km"};
 let ui = {dist:"km", vol:"L", per:"month", f:"all", tab:"overview"};
 try{ Object.assign(ui, JSON.parse(localStorage.getItem("fuel-ui2") || "{}")); }catch(e){}
 function saveUi(){ try{ localStorage.setItem("fuel-ui2", JSON.stringify(ui)); }catch(e){} }
@@ -20,7 +20,37 @@ const vU = () => ui.vol === "L" ? "L" : "gal";
 const econ = (km, L) => dOut(km) / vOut(L);
 const econUnit = () => ui.dist === "mi" && ui.vol === "gal" ? "mpg" : dU() + "/" + vU();
 const fmt = (n, d=1) => n == null || !isFinite(n) ? "–" : n.toLocaleString(undefined,{minimumFractionDigits:d,maximumFractionDigits:d});
-const money = n => settings.currency + fmt(n, 2);
+/* ---------- currency ---------- */
+// Shown first in Settings; every other ISO currency the browser knows follows.
+const COMMON_CURRENCIES = ["PKR","USD","EUR","GBP","AED","SAR","QAR","OMR","KWD","BHD","INR","CAD","AUD","CNY","JPY"];
+const LEGACY_SYMBOLS = {"$":"USD", "Rs":"PKR", "Rs.":"PKR", "₨":"PKR", "€":"EUR", "£":"GBP", "₹":"INR"};
+// Older saves stored a symbol; turn anything that isn't an ISO code into one.
+const curCode = c => /^[A-Z]{3}$/.test(c || "") ? c : LEGACY_SYMBOLS[(c || "").trim()] || "USD";
+const moneyFormats = {};
+function moneyFormat(code, digits){
+  const key = code + digits;
+  if (!moneyFormats[key]){
+    const opts = {style:"currency", currency:code, minimumFractionDigits:digits, maximumFractionDigits:digits};
+    try{ moneyFormats[key] = new Intl.NumberFormat(undefined, {...opts, currencyDisplay:"narrowSymbol"}); }
+    catch(e){ moneyFormats[key] = new Intl.NumberFormat(undefined, opts); }
+  }
+  return moneyFormats[key];
+}
+const money = (n, digits = 2) => n == null || !isFinite(n) ? "–" : moneyFormat(curCode(settings.currency), digits).format(n);
+function currencyLabel(code){
+  let name = code;
+  try{ name = new Intl.DisplayNames(undefined, {type:"currency"}).of(code) || code; }catch(e){}
+  const sym = moneyFormat(code, 0).formatToParts(0).find(p => p.type === "currency")?.value;
+  return code + " · " + name + (sym && sym !== code ? " (" + sym + ")" : "");
+}
+function fillCurrencySelect(){
+  let all = [];
+  try{ all = Intl.supportedValuesOf("currency"); }catch(e){}
+  const rest = all.filter(c => !COMMON_CURRENCIES.includes(c));
+  const opt = c => `<option value="${c}">${esc(currencyLabel(c))}</option>`;
+  $("sCur").innerHTML = `<optgroup label="Common">${COMMON_CURRENCIES.map(opt).join("")}</optgroup>` +
+    (rest.length ? `<optgroup label="All currencies">${rest.map(opt).join("")}</optgroup>` : "");
+}
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const sum = (a, f) => a.reduce((t, x) => t + f(x), 0);
 
@@ -70,7 +100,7 @@ function render(){
   document.querySelectorAll("[data-tab]").forEach(b => b.setAttribute("aria-selected", b.dataset.tab === ui.tab));
   document.querySelectorAll("[data-view]").forEach(v => v.hidden = v.dataset.view !== ui.tab);
   document.querySelectorAll(".eu").forEach(el => el.textContent = econUnit());
-  if (document.activeElement !== $("sCur")) $("sCur").value = settings.currency;
+  $("sCur").value = curCode(settings.currency);
   $("sGal").value = settings.gallon; $("sOdo").value = settings.odoUnit;
 
   const fills = list.filter(e => e.liters > 0);
@@ -260,7 +290,7 @@ function renderSpendChart(list){
   const y = v => T + (1 - v / hi) * (H - T - B);
   const bw = (W - L - R) / keys.length, w = Math.min(46, bw * 0.6);
   let g = "";
-  for (let v = 0; v <= hi + 1e-9; v += step) g += `<line x1="${L}" x2="${W-R}" y1="${y(v)}" y2="${y(v)}" style="stroke:var(--grid)"/><text x="${L-6}" y="${y(v)+4}" text-anchor="end">${esc(settings.currency)}${fmt(v,0)}</text>`;
+  for (let v = 0; v <= hi + 1e-9; v += step) g += `<line x1="${L}" x2="${W-R}" y1="${y(v)}" y2="${y(v)}" style="stroke:var(--grid)"/><text x="${L-6}" y="${y(v)+4}" text-anchor="end">${esc(money(v, 0))}</text>`;
   keys.forEach((k,i) => { const r = byM[k], cx = L + bw*i + bw/2;
     g += `<rect x="${cx-w/2}" y="${y(r.card)}" width="${w}" height="${y(0)-y(r.card)}" style="fill:var(--card)"><title>${monthLabel(k)} fuel card ${money(r.card)}</title></rect>`;
     g += `<rect x="${cx-w/2}" y="${y(r.card + r.self)}" width="${w}" height="${y(r.card)-y(r.card+r.self)}" style="fill:var(--me)"><title>${monthLabel(k)} me ${money(r.self)}</title></rect>`;
@@ -436,7 +466,7 @@ function bind(attr, key, after){
 }
 bind("dist", "dist"); bind("vol", "vol"); bind("per", "per"); bind("f", "f"); bind("tab", "tab");
 $("todoGo").addEventListener("click", () => { ui.tab = "log"; ui.f = "noprice"; saveUi(); render(); scrollTo(0,0); });
-$("sCur").addEventListener("input", () => { settings.currency = $("sCur").value; render(); saveSettings(); });
+$("sCur").addEventListener("change", () => { settings.currency = $("sCur").value; render(); saveSettings(); toast("Currency set to " + settings.currency); });
 $("sGal").addEventListener("change", () => { settings.gallon = $("sGal").value; render(); saveSettings(); });
 $("sOdo").addEventListener("change", () => { settings.odoUnit = $("sOdo").value; render(); saveSettings(); });
 let rz = null;
@@ -472,6 +502,7 @@ $("signOutBtn").addEventListener("click", async () => { toggleMenu(false); await
 $("welcomeAdd").addEventListener("click", () => openSheet());
 
 /* ---------- init ---------- */
+fillCurrencySelect();
 let currentUserId = null;
 async function enterApp(user){
   if (currentUserId === user.id) return;
@@ -492,7 +523,7 @@ async function enterApp(user){
 }
 function leaveApp(){
   currentUserId = null; store = null; entries = []; loaded = false;
-  settings = {currency:"$", gallon:"US", odoUnit:"km"};
+  settings = {currency:"USD", gallon:"US", odoUnit:"km"};
   if (sheet.open) closeSheet();
   $("googleSignIn").disabled = false;
   showScreen("signin");
