@@ -97,6 +97,13 @@
       <button class="btn" type="button" id="todoGo">Review in log</button>
     </div>
 
+    <div class="limit-card dash" id="limitCard" hidden>
+      <div class="limit-top"><span class="lbl">Fuel card · <span id="lcMonth"></span></span><span class="fc-range" id="lcReset"></span></div>
+      <div class="limit-main"><span class="limit-left" id="lcLeft"></span><span class="muted">left</span></div>
+      <div class="meter" aria-hidden="true"><span id="lcBar"></span></div>
+      <div class="legend" id="lcUsed"></div>
+    </div>
+
     <div class="hero dash">
       <div class="gaugecard">
         <span class="lbl">Current average</span>
@@ -118,7 +125,7 @@
     <div class="panel dash">
       <div class="panel-head">
         <h2>Fuel spending</h2>
-        <div class="legend"><span><i class="dot" style="background:var(--card)"></i>Fuel card</span><span><i class="dot" style="background:var(--me)"></i>Paid by me</span></div>
+        <div class="legend card-only"><span><i class="dot" style="background:var(--card)"></i>Fuel card</span><span><i class="dot" style="background:var(--me)"></i>Paid by me</span></div>
       </div>
       <div class="spendgrid" id="spendgrid"></div>
     </div>
@@ -143,8 +150,8 @@
       <div class="legend">
         <span><i class="dot" style="background:var(--good)"></i>Better than your average</span>
         <span><i class="dot" style="background:var(--warn)"></i>Worse than your average</span>
-        <span><i class="dot" style="background:var(--card)"></i>Fuel card</span>
-        <span><i class="dot" style="background:var(--me)"></i>Me</span>
+        <span class="card-only"><i class="dot" style="background:var(--card)"></i>Fuel card</span>
+        <span class="card-only"><i class="dot" style="background:var(--me)"></i>Me</span>
       </div>
       <div class="calday" id="calDay"></div>
     </div>
@@ -174,12 +181,12 @@
         <h2>Log</h2>
         <div class="filters" role="group" aria-label="Filter">
           <button class="fchip" data-f="all">All</button>
-          <button class="fchip" data-f="card">Fuel card</button>
-          <button class="fchip" data-f="self">Me</button>
+          <button class="fchip card-only" data-f="card">Fuel card</button>
+          <button class="fchip card-only" data-f="self">Me</button>
           <button class="fchip" data-f="noprice">Needs price</button>
         </div>
       </div>
-      <p class="muted" style="margin:0;font-size:13px">Tap the <b>Fuel card / Me</b> tag to switch who paid. Tap a price to change it.</p>
+      <p class="muted card-only" style="margin:0;font-size:13px">Tap the <b>Fuel card / Me</b> tag to switch who paid. Tap a price to change it.</p>
       <div id="log"></div>
     </div>
   </section>
@@ -187,7 +194,7 @@
   <!-- REPORTS -->
   <section class="view" data-view="reports" hidden>
     <div class="panel">
-      <div class="panel-head"><h2>Spending by month</h2><div class="legend"><span><i class="dot" style="background:var(--card)"></i>Fuel card</span><span><i class="dot" style="background:var(--me)"></i>Me</span></div></div>
+      <div class="panel-head"><h2>Spending by month</h2><div class="legend card-only"><span><i class="dot" style="background:var(--card)"></i>Fuel card</span><span><i class="dot" style="background:var(--me)"></i>Me</span></div></div>
       <div class="chart" id="spendChart"></div>
     </div>
     <div class="panel">
@@ -214,7 +221,17 @@
       <div class="settings">
         <label>Gallon type<select id="sGal"><option value="US">US gallon (3.785 L)</option><option value="UK">UK gallon (4.546 L)</option></select></label>
         <label>My odometer reads in<select id="sOdo"><option value="km">Kilometers</option><option value="mi">Miles</option></select></label>
-        <label><span id="sCardLbl">Fuel card covers each month (L)</span><input type="number" id="sCard" inputmode="decimal" min="0" step="1" placeholder="0 = no fuel card"></label>
+      </div>
+      <div class="limit-set">
+        <div class="limit-h">
+          <span class="lbl">Fuel card limit per month</span>
+          <div class="seg" role="group" aria-label="Limit type"><button type="button" data-ltype="liters" id="lTypeL">Liters</button><button type="button" data-ltype="amount">Amount</button></div>
+        </div>
+        <div class="limit-row">
+          <label class="limit-input"><span id="sLimitLbl">Liters each month</span><input type="number" id="sLimit" inputmode="decimal" min="0" step="1" placeholder="No fuel card"></label>
+          <button class="btn ghost" type="button" id="sLimitClear">No fuel card</button>
+        </div>
+        <p class="hint muted" id="sLimitHint">Starts over on the 1st of every month. New fill-ups are marked as fuel card until the limit is used.</p>
       </div>
       <p class="muted" style="margin:0;font-size:13px">Averages use the full-tank method: distance since the previous full fill-up ÷ fuel added. Partial fills are added to the next full one. Entries without fuel are saved as odometer readings.</p>
     </div>
@@ -243,8 +260,8 @@
       <label><span id="fPpuLbl">Price per L</span><input type="number" id="fPpu" inputmode="decimal" min="0" step="0.001" placeholder="Optional"></label>
       <label>Currency<select id="fCur"></select></label>
     </div>
-    <div style="display:grid;gap:6px">
-      <span class="lbl">Paid by</span>
+    <div class="card-only" style="display:grid;gap:6px">
+      <div class="payer-h"><span class="lbl">Paid by</span><span class="payer-left" id="fCardLeft"></span></div>
       <div class="payer" role="group" aria-label="Paid by">
         <button type="button" data-p="card" aria-pressed="false">Fuel card</button>
         <button type="button" data-p="self" aria-pressed="true">Me</button>

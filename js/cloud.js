@@ -134,6 +134,8 @@ export class FuelStore {
       gallon: row.gallon_type,
       odoUnit: row.odometer_unit,
       ...(row.card_monthly_liters != null ? { cardLiters: Number(row.card_monthly_liters) } : {}),
+      ...(row.card_monthly_amount != null ? { cardAmount: Number(row.card_monthly_amount) } : {}),
+      ...(row.card_limit_type ? { cardType: row.card_limit_type } : {}),
     };
   }
 
@@ -144,13 +146,19 @@ export class FuelStore {
       gallon_type: s.gallon,
       odometer_unit: s.odoUnit,
       card_monthly_liters: s.cardLiters ?? 0,
+      card_monthly_amount: s.cardAmount ?? 0,
+      card_limit_type: s.cardType === "amount" ? "amount" : "liters",
     };
-    const res = await this.supabase.from("fuel_settings").upsert(row);
-    // Column missing (allowance migration not run yet): save the rest.
-    if (res.error && /card_monthly_liters/.test(res.error.message || "")) {
-      delete row.card_monthly_liters;
-      check(await this.supabase.from("fuel_settings").upsert(row));
-    } else check(res);
+    // Columns from later migrations may not exist yet: drop any the database
+    // says are missing and save the rest.
+    for (let tries = 0; tries < 4; tries++) {
+      const res = await this.supabase.from("fuel_settings").upsert(row);
+      const missing = res.error && /'?(card_[a-z_]+)'? column|column "?(card_[a-z_]+)/.exec(res.error.message || "");
+      const col = missing && (missing[1] || missing[2]);
+      if (col && col in row) { delete row[col]; continue; }
+      check(res);
+      return;
+    }
   }
 
   // Petrol prices per liter by date, oldest first. Empty if the table doesn't exist yet.
