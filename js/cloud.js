@@ -125,20 +125,43 @@ export class FuelStore {
     return row && { email: row.email, name: row.full_name, avatar: row.avatar_url, since: row.created_at };
   }
 
+  // select("*") so settings still load before the card allowance migration has run.
   async getSettings() {
-    const row = check(await this.supabase.from("fuel_settings").select("currency, gallon_type, odometer_unit").maybeSingle());
-    return row ? { currency: row.currency, gallon: row.gallon_type, odoUnit: row.odometer_unit } : null;
+    const row = check(await this.supabase.from("fuel_settings").select("*").maybeSingle());
+    if (!row) return null;
+    return {
+      currency: row.currency,
+      gallon: row.gallon_type,
+      odoUnit: row.odometer_unit,
+      ...(row.card_monthly_liters != null ? { cardLiters: Number(row.card_monthly_liters) } : {}),
+    };
   }
 
   async saveSettings(s) {
-    check(
-      await this.supabase.from("fuel_settings").upsert({
-        user_id: this.user.id,
-        currency: s.currency,
-        gallon_type: s.gallon,
-        odometer_unit: s.odoUnit,
-      }),
-    );
+    const row = {
+      user_id: this.user.id,
+      currency: s.currency,
+      gallon_type: s.gallon,
+      odometer_unit: s.odoUnit,
+      card_monthly_liters: s.cardLiters ?? 0,
+    };
+    const res = await this.supabase.from("fuel_settings").upsert(row);
+    // Column missing (allowance migration not run yet): save the rest.
+    if (res.error && /card_monthly_liters/.test(res.error.message || "")) {
+      delete row.card_monthly_liters;
+      check(await this.supabase.from("fuel_settings").upsert(row));
+    } else check(res);
+  }
+
+  // Petrol prices per liter by date, oldest first. Empty if the table doesn't exist yet.
+  async listPrices() {
+    const res = await this.supabase
+      .from("fuel_prices")
+      .select("price_date, price_per_liter, currency")
+      .eq("fuel_type", "petrol")
+      .order("price_date");
+    if (res.error) return [];
+    return res.data.map((r) => ({ date: r.price_date, price: Number(r.price_per_liter), currency: r.currency }));
   }
 }
 

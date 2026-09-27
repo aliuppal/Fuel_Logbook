@@ -153,6 +153,18 @@
       <div class="panel-head"><h2>Recent fill-ups</h2><button class="linkbtn" type="button" data-goto="log">See full log →</button></div>
       <div class="list" id="recent"></div>
     </div>
+
+    <div class="panel dash forecast" id="forecast" hidden>
+      <div class="panel-head">
+        <h2>Forecast</h2>
+        <div class="fc-rate" id="fcRate"></div>
+      </div>
+      <div class="fc-grid" id="fcGrid"></div>
+      <div class="fc-price">
+        <div class="panel-head"><h3>Fuel price</h3><div class="legend" id="fcPriceMeta"></div></div>
+        <div class="chart" id="priceChart"></div>
+      </div>
+    </div>
   </section>
 
   <!-- LOG -->
@@ -202,6 +214,7 @@
       <div class="settings">
         <label>Gallon type<select id="sGal"><option value="US">US gallon (3.785 L)</option><option value="UK">UK gallon (4.546 L)</option></select></label>
         <label>My odometer reads in<select id="sOdo"><option value="km">Kilometers</option><option value="mi">Miles</option></select></label>
+        <label><span id="sCardLbl">Fuel card covers each month (L)</span><input type="number" id="sCard" inputmode="decimal" min="0" step="1" placeholder="0 = no fuel card"></label>
       </div>
       <p class="muted" style="margin:0;font-size:13px">Averages use the full-tank method: distance since the previous full fill-up ÷ fuel added. Partial fills are added to the next full one. Entries without fuel are saved as odometer readings.</p>
     </div>

@@ -3,12 +3,12 @@ import { cloudConfigured, getUser, signInWithGoogle, signOut, onAuthChange, open
 const KM_PER_MI = 1.609344, GAL = {US:3.785411784, UK:4.54609};
 const MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 const MONL = ["January","February","March","April","May","June","July","August","September","October","November","December"];
-let entries = [], settings = {currency:"PKR", gallon:"US", odoUnit:"km"};
+let entries = [], settings = {currency:"PKR", gallon:"US", odoUnit:"km", cardLiters:0};
 let ui = {dist:"km", vol:"L", per:"month", f:"all", tab:"overview"};
 try{ Object.assign(ui, JSON.parse(localStorage.getItem("fuel-ui2") || "{}")); }catch(e){}
 function saveUi(){ try{ localStorage.setItem("fuel-ui2", JSON.stringify(ui)); }catch(e){} }
 
-let store = null, loaded = false, editingId = null, payer = "self", lastPriceEdit = "paid";
+let prices = [], store = null, loaded = false, editingId = null, payer = "self", lastPriceEdit = "paid";
 const $ = id => document.getElementById(id);
 
 /* ---------- units & format ---------- */
@@ -127,6 +127,8 @@ function render(){
   document.querySelectorAll(".eu").forEach(el => el.textContent = econUnit());
   renderCurrency();
   $("sGal").value = settings.gallon; $("sOdo").value = settings.odoUnit;
+  if (document.activeElement !== $("sCard")) $("sCard").value = settings.cardLiters > 0 ? +vOut(settings.cardLiters).toFixed(1) : "";
+  $("sCardLbl").textContent = "Fuel card covers each month (" + vU() + ")";
 
   const fills = list.filter(e => e.liters > 0);
   const unpriced = fills.filter(e => !(e.paid > 0));
@@ -197,6 +199,7 @@ function renderOverview(C, fills){
 
   renderChart(segs, overall.e);
   renderCalendar(C);
+  renderForecast(C);
   const recent = list.slice(-5).reverse();
   $("recent").innerHTML = recent.length ? recent.map(e => entryRow(e, C)).join("") : `<p class="empty">${loaded ? "No entries yet. Add your first fill-up." : "Loading…"}</p>`;
 }
@@ -254,6 +257,171 @@ function renderLog(C){
     return `<div class="group-h"><h3>${MONL[m-1]} ${y}</h3><span>${fl.length} fill-ups · ${fmt(vOut(sum(fl, e => e.liters)),1)} ${vU()} · ${money(paid)}</span></div>
       <div class="list">${g.items.map(e => entryRow(e, C)).join("")}</div>`;
   }).join("");
+}
+
+/* ---------- fuel prices & forecast ---------- */
+const DAY_MS = 864e5;
+const dayNum = s => { const [y,m,d] = s.split("-").map(Number); return Date.UTC(y, m-1, d) / DAY_MS; };
+const dayStr = n => new Date(n * DAY_MS).toISOString().slice(0, 10);
+const perUnit = pricePerL => pricePerL / vOut(1);   // price per liter → per liter or gallon shown
+const RECENT_DAYS = 60;
+
+// Price per liter by date: the shared price table in the chosen currency, else what you paid.
+function priceSeries(list){
+  const code = curCode(settings.currency);
+  const table = prices.filter(p => p.currency === code);
+  if (table.length) return table;
+  return list.filter(e => e.liters > 0 && e.paid > 0).map(e => ({date: e.date, price: e.paid / e.liters}));
+}
+function priceOn(series, date){
+  let p = null;
+  for (const x of series){ if (x.date <= date) p = x.price; else break; }
+  return p ?? (series[0] ? series[0].price : null);
+}
+// Straight-line trend over the last 60 days of prices, starting from the latest price.
+function priceTrend(series){
+  if (!series.length) return null;
+  const last = series[series.length-1], t0 = dayNum(last.date);
+  const w = series.filter(x => t0 - dayNum(x.date) <= RECENT_DAYS);
+  let slope = 0;
+  if (w.length >= 3){
+    const mx = sum(w, x => dayNum(x.date)) / w.length, my = sum(w, x => x.price) / w.length;
+    const den = sum(w, x => (dayNum(x.date) - mx) ** 2);
+    slope = den ? sum(w, x => (dayNum(x.date) - mx) * (x.price - my)) / den : 0;
+  }
+  const at = d => d <= t0 ? priceOn(series, dayStr(d)) : Math.min(last.price * 1.25, Math.max(last.price * 0.8, last.price + slope * (d - t0)));
+  return {last, slope, at};
+}
+// Splits a month's fill-ups between the fuel card allowance (used first) and me.
+function splitMonth(fills, allowance, series){
+  let left = allowance, cardL = 0, meL = 0, cardRs = 0, meRs = 0;
+  for (const e of fills){
+    const cost = e.paid > 0 ? e.paid : e.liters * (priceOn(series, e.date) || 0);
+    const onCard = allowance > 0 ? Math.min(left, e.liters) : (isCard(e) ? e.liters : 0);
+    left -= Math.min(left, e.liters);
+    cardL += onCard; meL += e.liters - onCard;
+    cardRs += cost * onCard / e.liters; meRs += cost * (e.liters - onCard) / e.liters;
+  }
+  return {cardL, meL, cardRs, meRs, left: Math.max(0, left)};
+}
+function drivingRates(C){
+  const {list, segs} = C;
+  if (list.length < 2 || !segs.length) return null;
+  const last = list[list.length-1], lastDay = dayNum(last.date);
+  let win = list.filter(e => lastDay - dayNum(e.date) <= RECENT_DAYS);
+  if (win.length < 2) win = list.slice(-10);
+  const span = dayNum(win[win.length-1].date) - dayNum(win[0].date);
+  if (span < 1) return null;
+  const kmPerDay = (win[win.length-1].odo - win[0].odo) / span;
+  let rs = segs.filter(s => dayNum(segs[segs.length-1].date) - dayNum(s.date) <= RECENT_DAYS);
+  if (rs.length < 2) rs = segs;
+  const kmPerL = sum(rs, s => s.dist) / sum(rs, s => s.lit);
+  let full = list.filter(e => e.liters > 0 && !e.partial && lastDay - dayNum(e.date) <= RECENT_DAYS);
+  if (!full.length) full = list.filter(e => e.liters > 0);
+  const perFill = sum(full, e => e.liters) / full.length;
+  return kmPerDay > 0 && kmPerL > 0 && perFill > 0 ? {kmPerDay, kmPerL, perFill} : null;
+}
+function projectDays(r, trend, from, to){
+  const days = to - from + 1, km = r.kmPerDay * days, L = km / r.kmPerL;
+  const price = trend ? trend.at((from + to) / 2) : null;
+  return {days, km, L, fills: L / r.perFill, price, cost: price != null ? L * price : null};
+}
+function withCard(p, allowanceLeft){
+  const cardL = Math.min(allowanceLeft, p.L), meL = p.L - cardL;
+  return {...p, cardL, meL, cardRs: p.price != null ? cardL * p.price : null, meRs: p.price != null ? meL * p.price : null};
+}
+
+function renderForecast(C){
+  const box = $("forecast");
+  const r = drivingRates(C);
+  if (!r){ box.hidden = true; return; }
+  box.hidden = false;
+  const series = priceSeries(C.list), trend = priceTrend(series);
+  const allowance = settings.cardLiters || 0;
+  const today = todayIso(), T = dayNum(today), mk = monthKey(today);
+  const [y, m] = mk.split("-").map(Number);
+  const monthEnd = dayNum(iso(new Date(y, m, 0)));
+  const nextStart = monthEnd + 1, nextEnd = dayNum(iso(new Date(y, m + 1, 0)));
+  const nextKey = dayStr(nextStart).slice(0, 7);
+
+  const monthFills = C.list.filter(e => monthKey(e.date) === mk && e.liters > 0);
+  const act = splitMonth(monthFills, allowance, series);
+  const actKm = (() => { const inM = C.list.filter(e => monthKey(e.date) === mk), before = C.list.filter(e => monthKey(e.date) < mk).pop();
+    return inM.length ? inM[inM.length-1].odo - (before ? before.odo : inM[0].odo) : 0; })();
+
+  const rest = withCard(projectDays(r, trend, T, monthEnd), allowance > 0 ? act.left : 0);
+  const next = withCard(projectDays(r, trend, nextStart, nextEnd), allowance);
+  const total = {
+    km: actKm + rest.km, L: sum(monthFills, e => e.liters) + rest.L, fills: monthFills.length + rest.fills,
+    cardL: act.cardL + rest.cardL, meL: act.meL + rest.meL,
+    cardRs: act.cardRs + (rest.cardRs || 0), meRs: act.meRs + (rest.meRs || 0),
+    price: trend ? trend.at(Math.round((dayNum(mk + "-01") + monthEnd) / 2)) : null,
+  };
+  total.cost = total.cardRs + total.meRs;
+
+  const card = (title, range, p) => {
+    const cost = p.cost ?? ((p.cardRs || 0) + (p.meRs || 0));
+    const tot = (p.cardRs || 0) + (p.meRs || 0);
+    return `<div class="fc">
+      <div class="fc-h"><span class="lbl">${title}</span><span class="fc-range">${range}</span></div>
+      <div class="fc-big">${p.price != null || cost ? money(cost, 0) : "–"}</div>
+      <div class="stack" aria-hidden="true">${tot > 0 ? `<span style="width:${p.cardRs/tot*100}%;background:var(--card)"></span><span style="width:${p.meRs/tot*100}%;background:var(--me)"></span>` : ""}</div>
+      <dl class="fc-rows">
+        <div><dt>Distance</dt><dd>${fmt(dOut(p.km), 0)} ${dU()}</dd></div>
+        <div><dt>Fuel</dt><dd>${fmt(vOut(p.L), 1)} ${vU()}</dd></div>
+        <div><dt>Fill-ups</dt><dd>${Math.round(p.fills)}</dd></div>
+        <div><dt><i class="dot" style="background:var(--card)"></i>Fuel card</dt><dd>${fmt(vOut(p.cardL), 1)} ${vU()} · ${money(p.cardRs || 0, 0)}</dd></div>
+        <div><dt><i class="dot" style="background:var(--me)"></i>Me</dt><dd>${fmt(vOut(p.meL), 1)} ${vU()} · <b>${money(p.meRs || 0, 0)}</b></dd></div>
+        <div><dt>Price / ${vU()}</dt><dd>${p.price != null ? money(perUnit(p.price)) : "–"}</dd></div>
+      </dl>
+    </div>`;
+  };
+  const rangeTxt = (a, b) => shortDate(dayStr(a)) + (a === b ? "" : " – " + shortDate(dayStr(b)));
+  $("fcGrid").innerHTML =
+    card("Rest of " + MONL[m-1], rangeTxt(T, monthEnd), rest) +
+    card(MONL[m-1] + " total", rangeTxt(dayNum(mk + "-01"), monthEnd), total) +
+    card(MONL[+nextKey.slice(5) - 1], rangeTxt(nextStart, nextEnd), next);
+  $("fcRate").innerHTML =
+    `<span><b>${fmt(dOut(r.kmPerDay), 0)}</b> ${dU()}/day</span><span><b>${fmt(econ(r.kmPerL, 1))}</b> ${econUnit()}</span>` +
+    `<span><b>${fmt(vOut(r.perFill), 1)}</b> ${vU()}/fill-up</span>` + (allowance > 0 ? `<span><b>${fmt(vOut(allowance), 0)}</b> ${vU()} card/month</span>` : "");
+
+  const pc = $("priceChart").closest(".fc-price");
+  pc.hidden = !trend;
+  if (trend) renderPriceChart(series, trend, nextEnd);
+}
+
+function renderPriceChart(series, trend, endDay){
+  const el = $("priceChart");
+  const t0 = dayNum(trend.last.date), start = t0 - 120;
+  const past = series.filter(x => dayNum(x.date) >= start).map(x => ({d: dayNum(x.date), v: perUnit(x.price)}));
+  const future = [];
+  for (let d = t0; d <= endDay; d += 3) future.push({d, v: perUnit(trend.at(d))});
+  future.push({d: endDay, v: perUnit(trend.at(endDay))});
+  const all = past.concat(future), vals = all.map(p => p.v);
+  const W = Math.max(280, el.clientWidth || 600), H = 190, L = 58, R = 12, T = 12, B = 24;
+  const {lo, hi, step} = niceScale(Math.min(...vals), Math.max(...vals), 4);
+  const d0 = past.length ? past[0].d : t0;
+  const x = d => L + (d - d0) / Math.max(1, endDay - d0) * (W - L - R);
+  const y = v => T + (1 - (v - lo) / (hi - lo)) * (H - T - B);
+  let g = "";
+  for (let v = lo; v <= hi + 1e-9; v += step) g += `<line x1="${L}" x2="${W-R}" y1="${y(v)}" y2="${y(v)}" style="stroke:var(--grid)"/><text x="${L-6}" y="${y(v)+4}" text-anchor="end">${esc(money(v, 0))}</text>`;
+  const m = new Date((d0 + 1) * DAY_MS); m.setUTCDate(1); m.setUTCMonth(m.getUTCMonth() + 1);
+  while (m.getTime() / DAY_MS <= endDay){ const xx = x(m.getTime() / DAY_MS);
+    g += `<line x1="${xx}" x2="${xx}" y1="${T}" y2="${H-B}" style="stroke:var(--grid)" stroke-dasharray="2 3"/><text x="${xx}" y="${H-7}" text-anchor="middle">${MON[m.getUTCMonth()]}</text>`;
+    m.setUTCMonth(m.getUTCMonth() + 1); }
+  const line = pts => pts.map((p, i) => (i ? "L" : "M") + x(p.d).toFixed(1) + " " + y(p.v).toFixed(1)).join(" ");
+  // Prices change in steps, so the history is drawn as a step line.
+  const steps = past.flatMap((p, i) => i ? [{d: p.d, v: past[i-1].v}, p] : [p]);
+  if (steps.length) steps.push({d: t0, v: steps[steps.length-1].v});
+  g += `<line x1="${x(t0)}" x2="${x(t0)}" y1="${T}" y2="${H-B}" style="stroke:var(--line)"/>`;
+  g += `<path d="${line(steps)}" fill="none" style="stroke:var(--ink)" stroke-width="2"/>`;
+  g += `<path d="${line(future)}" fill="none" style="stroke:var(--accent)" stroke-width="2.2" stroke-dasharray="6 5"/>`;
+  const endV = future[future.length-1];
+  g += `<circle cx="${x(t0)}" cy="${y(perUnit(trend.last.price))}" r="4.5" style="fill:var(--ink)"/><circle cx="${x(endV.d)}" cy="${y(endV.v)}" r="4.5" style="fill:var(--accent)"/>`;
+  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Fuel price per ${vU()} and forecast" style="height:${H}px">${g}</svg>`;
+  $("fcPriceMeta").innerHTML = `<span><b>${money(perUnit(trend.last.price))}</b> ${shortDate(trend.last.date)}</span>` +
+    `<span style="color:var(--accent)"><b>${money(endV.v)}</b> ${shortDate(dayStr(endV.d))}</span>` +
+    `<span>${trend.slope >= 0 ? "▲" : "▼"} ${money(Math.abs(perUnit(trend.slope)) * 30, 0)}/month</span>`;
 }
 
 /* ---------- calendar ---------- */
@@ -461,6 +629,7 @@ function openSheet(id, focus, date){
     $("fSubmit").textContent = "Add fill-up"; $("fDelete").hidden = true;
   }
   lastPriceEdit = "paid";
+  autoPpu = !editingId; autoPrice();
   updatePreview();
   if (sheet.showModal) sheet.showModal(); else sheet.setAttribute("open", "");
   setTimeout(() => $(focus || (editingId ? "fPaid" : "fOdo")).focus(), 30);
@@ -501,8 +670,16 @@ function syncPrice(){
   else if (lastPriceEdit === "paid" && paid > 0) $("fPpu").value = (paid / v).toFixed(3);
 }
 $("fPaid").addEventListener("input", () => { lastPriceEdit = "paid"; syncPrice(); });
-$("fPpu").addEventListener("input", () => { lastPriceEdit = "ppu"; syncPrice(); });
-["fOdo","fDate","fVol"].forEach(id => $(id).addEventListener("input", () => { if (id === "fVol") syncPrice(); updatePreview(); }));
+$("fPpu").addEventListener("input", () => { lastPriceEdit = "ppu"; autoPpu = false; syncPrice(); });
+// New fill-ups start with the fuel price for their date; typing a price turns this off.
+let autoPpu = false;
+function autoPrice(){
+  if (editingId || !autoPpu) return;
+  const p = priceOn(priceSeries(compute().list), $("fDate").value || todayIso());
+  if (p == null) return;
+  $("fPpu").value = perUnit(p).toFixed(2); lastPriceEdit = "ppu"; syncPrice();
+}
+["fOdo","fDate","fVol"].forEach(id => $(id).addEventListener("input", () => { if (id === "fVol") syncPrice(); if (id === "fDate") autoPrice(); updatePreview(); }));
 $("fPartial").addEventListener("change", updatePreview);
 document.querySelectorAll(".payer button").forEach(b => b.addEventListener("click", () => setPayer(b.dataset.p)));
 
@@ -558,6 +735,7 @@ $("fCur").addEventListener("change", () => setCurrency($("fCur").value));
 $("curQuick").addEventListener("click", ev => { const b = ev.target.closest("[data-cur]"); if (b) setCurrency(b.dataset.cur); });
 $("sGal").addEventListener("change", () => { settings.gallon = $("sGal").value; render(); saveSettings(); });
 $("sOdo").addEventListener("change", () => { settings.odoUnit = $("sOdo").value; render(); saveSettings(); });
+$("sCard").addEventListener("change", () => { const v = parseFloat($("sCard").value); settings.cardLiters = v > 0 ? +vIn(v).toFixed(2) : 0; render(); saveSettings(); });
 let rz = null;
 window.addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(render, 150); });
 
@@ -601,14 +779,14 @@ $("welcomeAdd").addEventListener("click", () => openSheet());
 // without a connection. Changes still need a connection to save.
 const CACHE_KEY = "fuel-offline-v1";
 function saveOffline(user){
-  try{ localStorage.setItem(CACHE_KEY, JSON.stringify({user: {id: user.id, email: user.email, user_metadata: user.user_metadata}, entries, settings, at: Date.now()})); }catch(e){}
+  try{ localStorage.setItem(CACHE_KEY, JSON.stringify({user: {id: user.id, email: user.email, user_metadata: user.user_metadata}, entries, settings, prices, at: Date.now()})); }catch(e){}
 }
 function readOffline(userId){
   try{ const c = JSON.parse(localStorage.getItem(CACHE_KEY) || "null"); return c && (!userId || c.user.id === userId) ? c : null; }catch(e){ return null; }
 }
 function clearOffline(){ try{ localStorage.removeItem(CACHE_KEY); }catch(e){} }
 function showOffline(c){
-  entries = c.entries || []; Object.assign(settings, c.settings || {});
+  entries = c.entries || []; prices = c.prices || []; Object.assign(settings, c.settings || {});
   loaded = true; render();
   const d = new Date(c.at);
   status("You're offline. Showing your log as of " + d.getDate() + " " + MON[d.getMonth()] + ", " + d.toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"}) + ". Changes need a connection.");
@@ -636,7 +814,8 @@ fillCurrencySelect();
 let currentUserId = null, currentUser = null;
 async function reloadLog(){
   try{
-    const [rows, saved] = await Promise.all([store.listEntries(), store.getSettings()]);
+    const [rows, saved, pr] = await Promise.all([store.listEntries(), store.getSettings(), store.listPrices()]);
+    prices = pr;
     entries = rows;
     if (saved) Object.assign(settings, saved);
     loaded = true; status(""); render();
@@ -665,7 +844,7 @@ async function enterApp(user){
 function leaveApp(){
   currentUserId = null; currentUser = null; store = null; entries = []; loaded = false;
   $("accountSince").hidden = true;
-  settings = {currency:"PKR", gallon:"US", odoUnit:"km"};
+  settings = {currency:"PKR", gallon:"US", odoUnit:"km", cardLiters:0};
   if (sheet.open) closeSheet();
   $("googleSignIn").disabled = false;
   showScreen("signin");

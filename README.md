@@ -19,13 +19,14 @@ start with an empty log.
 
 ## Database
 
-`supabase/migrations/` creates three tables:
+`supabase/migrations/` creates four tables:
 
 | Table | What it holds |
 |---|---|
 | `fuel_fillups` | One row per fill-up or odometer reading: `fill_date`, `odometer_km`, `liters` (null = reading only), `amount_paid`, `paid_by` (`card` or `self`), `partial_fill`, `note` |
+| `fuel_prices` | Petrol price per liter by date (`price_date`, `price_per_liter`, `currency`), shared by all users and readable when signed in. Add new prices from the SQL Editor |
 | `fuel_profiles` | One row per user, created automatically on first Google sign-in: `email`, `full_name`, `avatar_url`, `provider`, `created_at` (member since), `last_seen_at`. Users can only read their own profile and edit their name, photo and last-seen time |
-| `fuel_settings` | One row per user: `currency` (ISO code such as `PKR`, `USD`), `gallon_type` (`US`/`UK`), `odometer_unit` (`km`/`mi`) |
+| `fuel_settings` | One row per user: `currency` (ISO code such as `PKR`, `USD`), `gallon_type` (`US`/`UK`), `odometer_unit` (`km`/`mi`), `card_monthly_liters` (fuel card allowance at the start of each month) |
 
 Distances are stored in km and fuel in liters; the app converts for display.
 
@@ -46,7 +47,7 @@ Code: https://github.com/aliuppal/Fuel_Logbook
 
 ### 1. Supabase
 
-1. *SQL Editor*: run each file in `supabase/migrations/` in order (`20260929000000_fuel_logbook.sql`, then `20260930000000_fuel_currency_codes.sql`, then `20261001000000_fuel_profiles.sql`).
+1. *SQL Editor*: run each file in `supabase/migrations/` in order (`20260929000000_fuel_logbook.sql`, then `20260930000000_fuel_currency_codes.sql`, then `20261001000000_fuel_profiles.sql`, then `20261002000000_fuel_prices_and_card_allowance.sql`).
 2. `js/config.js` holds the project's **Project URL** and **anon / publishable** key
    (*Project Settings → API*). Never use the `service_role` key.
 3. *Authentication → URL Configuration*:
@@ -73,6 +74,10 @@ Open the app, choose **Continue with Google** once, then paste `supabase/seed_my
 Supabase's *SQL Editor* and run it. It adds the 28 existing entries to the account named at the
 top of the file and does nothing if that account already has fill-ups. Everyone else starts with
 an empty log.
+
+Then run `supabase/apply_card_and_prices.sql`: it sets the 100-liter monthly fuel card allowance,
+marks each past fill-up as fuel card or me (card first each month until 100 L), and fills in what
+each one cost from the fuel price on that day.
 
 ## Project layout
 

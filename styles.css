@@ -279,3 +279,23 @@ img{max-width:100%}
 /* ---------- installed app ---------- */
 body{-webkit-tap-highlight-color:transparent;overscroll-behavior-y:none}
 @media (display-mode: standalone){ .bar{padding-top:env(safe-area-inset-top,0px);top:0} }
+
+/* ---------- forecast ---------- */
+.forecast{border-style:dashed;border-color:color-mix(in srgb,var(--accent) 45%,var(--line))}
+.fc-rate{display:flex;flex-wrap:wrap;gap:4px 16px;font-size:13px;color:var(--muted)}
+.fc-rate b{color:var(--ink);font-family:var(--display);font-size:18px;font-weight:600}
+.fc-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.fc{background:var(--surface-2);border-radius:14px;padding:14px 16px;display:grid;gap:9px;align-content:start}
+.fc-h{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:baseline}
+.fc-range{font-size:12.5px;color:var(--muted)}
+.fc-big{font-family:var(--display);font-weight:700;font-size:36px;line-height:1}
+.fc-rows{margin:0;display:grid;gap:5px}
+.fc-rows div{display:flex;justify-content:space-between;gap:10px;font-size:13.5px}
+.fc-rows dt{color:var(--muted);display:flex;align-items:center;gap:6px}
+.fc-rows dt .dot{margin:0}
+.fc-rows dd{margin:0;text-align:right}
+.fc-rows b{font-weight:600}
+.fc-price{display:grid;gap:8px;border-top:1px solid var(--grid);padding-top:12px}
+.fc-price h3{font-size:18px}
+.fc-price .legend b{color:var(--ink);font-family:var(--display);font-size:17px;font-weight:600}
+@media (max-width:880px){ .fc-grid{grid-template-columns:1fr} }
