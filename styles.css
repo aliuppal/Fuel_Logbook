@@ -320,3 +320,15 @@ body{-webkit-tap-highlight-color:transparent;overscroll-behavior-y:none}
 .limit-set .hint{margin:0;font-size:13px}
 .payer-h{display:flex;justify-content:space-between;gap:8px;align-items:baseline;flex-wrap:wrap}
 .payer-left{font-size:12.5px;color:var(--card);font-weight:600}
+
+/* ---------- next fill-up ---------- */
+.fc-next{display:flex;align-items:center;gap:10px 18px;flex-wrap:wrap;background:var(--accent-soft);border:1px solid color-mix(in srgb,var(--accent) 40%,transparent);border-radius:14px;padding:12px 16px;color:var(--accent)}
+.fc-next svg{flex:none}
+.fn-when{display:grid;line-height:1.1}
+.fn-when .lbl{color:var(--accent)}
+.fn-when b{font-family:var(--display);font-size:28px;font-weight:700;color:var(--ink)}
+.fn-facts{display:flex;align-items:center;flex-wrap:wrap;gap:6px 16px;font-size:14px;color:var(--ink);margin-left:auto}
+.fn-facts b{font-family:var(--display);font-size:20px;font-weight:600}
+.fc-next.due{background:var(--warn-soft);border-color:color-mix(in srgb,var(--warn) 45%,transparent);color:var(--warn)}
+.fc-next.due .fn-when .lbl{color:var(--warn)}
+@media (max-width:640px){ .fn-facts{margin-left:0;width:100%} }

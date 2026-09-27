@@ -410,6 +410,7 @@ function renderForecast(C){
     </div>`;
   };
   const rangeTxt = (a, b) => shortDate(dayStr(a)) + (a === b ? "" : " – " + shortDate(dayStr(b)));
+  renderNextFill(C, r, trend, series, T);
   $("fcGrid").innerHTML =
     card("Rest of " + MONL[m-1], rangeTxt(T, monthEnd), rest) +
     card(MONL[m-1] + " total", rangeTxt(dayNum(mk + "-01"), monthEnd), total) +
@@ -421,6 +422,40 @@ function renderForecast(C){
   const pc = $("priceChart").closest(".fc-price");
   pc.hidden = !trend;
   if (trend) renderPriceChart(series, trend, nextEnd);
+}
+
+// Next fill-up: one tank lasts about (liters per fill-up × km/L) km, which at the
+// recent km/day gives the days between fill-ups, counted from the last one.
+function renderNextFill(C, r, trend, series, T){
+  const box = $("fcNext");
+  const last = C.list.filter(e => e.liters > 0).pop();
+  if (!last){ box.hidden = true; return; }
+  box.hidden = false;
+  const kmPerTank = r.perFill * r.kmPerL, daysPerTank = kmPerTank / r.kmPerDay;
+  const due = dayNum(last.date) + daysPerTank, left = due - T;
+  let when, from, to;
+  if (left < 0.5){ when = left < -1.5 ? "Overdue" : "Due today"; from = to = T; }
+  else {
+    from = Math.max(1, Math.floor(left)); to = Math.max(from, Math.ceil(left));
+    when = from === to ? (from === 1 ? "Tomorrow" : "In " + from + " days") : "In " + from + "–" + to + " days";
+    from += T; to += T;
+  }
+  const dates = from === to ? shortDate(dayStr(from))
+    : dayStr(from).slice(5, 7) === dayStr(to).slice(5, 7) ? +dayStr(from).slice(8) + "–" + shortDate(dayStr(to)) : shortDate(dayStr(from)) + " – " + shortDate(dayStr(to));
+  const dueDate = dayStr(Math.max(T, Math.round(due)));
+  const price = trend ? trend.at(dayNum(dueDate)) : priceOn(series, dueDate);
+  const cost = price ? r.perFill * price : null;
+  let payerChip = "";
+  if (hasLimit()){
+    const u = cardMonth(C.list, monthKey(dueDate), series);
+    const need = limitType() === "amount" ? (cost || 0) : r.perFill;
+    const onCard = u.left > 0 && u.left >= need / 2;
+    payerChip = `<span class="chip ${onCard ? "card" : "self"}">${onCard ? "Fuel card" : "Me"}</span>`;
+  }
+  box.classList.toggle("due", left < 0.5);
+  box.innerHTML = `<svg width="30" height="30" viewBox="0 0 34 34" aria-hidden="true"><path d="M11 25V10a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v15M9.5 25h13M13 12h6v4h-6zM21 15l3 2.5v5a1.3 1.3 0 0 0 2.6 0V13l-2.4-2.4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <div class="fn-when"><span class="lbl">Next fill-up</span><b>${when}</b></div>
+    <div class="fn-facts"><span>${dates}</span><span>~${fmt(dOut(last.odo + kmPerTank), 0)} ${dU()}</span><span>${fmt(vOut(r.perFill), 1)} ${vU()}</span>${cost ? `<span><b>${money(cost, 0)}</b></span>` : ""}${payerChip}</div>`;
 }
 
 function renderPriceChart(series, trend, endDay){
