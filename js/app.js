@@ -510,6 +510,9 @@ function renderCalendar(C){
 
   const byDay = {};
   C.list.forEach(e => { if (monthKey(e.date) === calMonth) (byDay[e.date] ||= []).push(e); });
+  const svcDay = {};
+  serviceEvents().forEach(x => { if (monthKey(x.date) === calMonth) (svcDay[x.date] ||= []).push(x); });
+  const monthSvc = Object.values(svcDay).flat();
 
   const fl = C.list.filter(e => monthKey(e.date) === calMonth && e.liters > 0);
   const ma = agg(C.segs.filter(s => monthKey(s.date) === calMonth));
@@ -517,6 +520,10 @@ function renderCalendar(C){
     ? `<span><b>${fl.length}</b> fill-ups</span><span><b>${fmt(vOut(sum(fl, e => e.liters)),1)}</b> ${vU()}</span>` +
       `<span><b>${fmt(ma.e)}</b> ${econUnit()} average</span><span><b>${money(sum(fl, e => e.paid > 0 ? e.paid : 0))}</b> spent</span>`
     : `<span>No fill-ups in ${MONL[m-1]} ${y}.</span>`;
+  if (monthSvc.length){
+    const svcCost = sum(monthSvc, x => x.cost || 0);
+    $("calSum").innerHTML += `<span class="cal-sum-svc">${WRENCH_SM}<b>${monthSvc.length}</b> service${monthSvc.length > 1 ? "s" : ""}${svcCost ? " · <b>" + money(svcCost, 0) + "</b>" : ""}</span>`;
+  }
 
   const lead = (new Date(y, m-1, 1).getDay() + 6) % 7, days = new Date(y, m, 0).getDate();
   let h = WEEKDAYS.map(d => `<div class="cal-wd" role="columnheader">${d}</div>`).join("");
@@ -527,6 +534,8 @@ function renderCalendar(C){
     if (ds === today) cls.push("today");
     if (ds === calSel) cls.push("sel");
     if (es.length) cls.push("has");
+    const sv = svcDay[ds] || [];
+    if (sv.length) cls.push("svc-day");
     // Tint the day by who paid: fuel card, me, or both.
     const fl = es.filter(e => e.liters > 0), anyCard = fl.some(isCard), anyMe = fl.some(e => !isCard(e));
     if (anyCard && anyMe) cls.push("pay-both"); else if (anyCard) cls.push("pay-card"); else if (anyMe) cls.push("pay-me");
@@ -536,8 +545,9 @@ function renderCalendar(C){
       const s = C.segById[e.id], ev = s ? econ(s.dist, s.lit) : null;
       return `<span class="cal-m ${rating(ev, C.overall.e)}"><i class="dot" style="background:var(--${isCard(e) ? "card" : "me"})"></i>` +
         `<span class="cal-v">${fmt(vOut(e.liters),1)} ${vU()}</span>${ev != null ? `<b>${fmt(ev)}</b>` : ""}</span>`;
-    }).join("") + (es.length > 2 ? `<span class="cal-more">+${es.length - 2} more</span>` : "");
-    const label = longDate(ds) + (es.length ? ", " + es.length + (es.length > 1 ? " entries" : " entry") : "");
+    }).join("") + (es.length > 2 ? `<span class="cal-more">+${es.length - 2} more</span>` : "") +
+      (sv.length ? `<span class="cal-s">${WRENCH_SM}<span class="cal-sn">${esc(sv[0].name)}${sv.length > 1 ? " +" + (sv.length - 1) : ""}</span></span>` : "");
+    const label = longDate(ds) + (es.length ? ", " + es.length + (es.length > 1 ? " entries" : " entry") : "") + (sv.length ? ", " + sv.map(x => x.name).join(", ") : "");
     h += `<button type="button" class="${cls.join(" ")}" data-day="${ds}" aria-label="${label}" aria-pressed="${ds === calSel}"><span class="cal-n">${d}</span>${marks}</button>`;
   }
   $("cal").innerHTML = h;
@@ -546,9 +556,10 @@ function renderCalendar(C){
   const box = $("calDay");
   box.hidden = !calSel || monthKey(calSel) !== calMonth;
   if (box.hidden) return;
-  const es = byDay[calSel] || [];
+  const es = byDay[calSel] || [], sv = svcDay[calSel] || [];
   box.innerHTML = `<div class="calday-h"><h3>${longDate(calSel)}</h3><button class="btn ghost" type="button" data-addon="${calSel}">＋ Add fill-up on this day</button></div>` +
-    (es.length ? `<div class="list">${es.slice().reverse().map(e => entryRow(e, C)).join("")}</div>` : `<p class="empty">No fill-ups on this day.</p>`);
+    (es.length ? `<div class="list">${es.slice().reverse().map(e => entryRow(e, C)).join("")}</div>` : sv.length ? "" : `<p class="empty">No fill-ups on this day.</p>`) +
+    (sv.length ? `<div class="cal-svc-list">${sv.map(x => `<div class="cal-svc">${WRENCH}<div><b>${esc(x.name)}</b><span>${fmt(dOut(x.odo), 0)} ${dU()}${x.note ? " · " + esc(x.note) : ""}</span></div><span class="cal-svc-cost">${x.cost != null ? money(x.cost, 0) : ""}</span></div>`).join("")}<button class="linkbtn" type="button" data-goto="service">Service →</button></div>` : "");
 }
 $("cal").addEventListener("click", ev => {
   const b = ev.target.closest("[data-day]"); if (!b) return;
@@ -602,12 +613,23 @@ function serviceStatuses(C){
     .sort((a, b) => rank[a.s.state] - rank[b.s.state] || a.s.nextDay - b.s.nextDay);
 }
 const STATE_TEXT = {overdue: "Overdue", soon: "Due soon", ok: "OK"};
+// Services to show on the calendar: the history, plus a rule's last-done date when the
+// history has no entry for it (reminders saved before history was kept).
+function serviceEvents(){
+  if (!rules) return [];
+  const ev = svcLog.slice();
+  rules.forEach(r => { if (!svcLog.some(x => x.ruleId === r.id && x.date === r.lastDate)) ev.push({name: r.name, ruleId: r.id, date: r.lastDate, odo: r.lastKm, cost: null, note: ""}); });
+  return ev;
+}
+const logsFor = rule => svcLog.filter(x => x.ruleId === rule.id).sort((a, b) => b.date.localeCompare(a.date));
+const lastCostOf = rule => logsFor(rule).find(x => x.cost != null) || null;
 function dueText(s, rule){
   if (rule.everyKm) return s.leftKm > 0
     ? `<b>${fmt(dOut(s.leftKm), 0)} ${dU()}</b> left`
     : `<b>${fmt(dOut(-s.leftKm), 0)} ${dU()}</b> overdue`;
   return s.leftDays >= 0 ? `<b>${s.leftDays} days</b> left` : `<b>${-s.leftDays} days</b> overdue`;
 }
+const WRENCH_SM = `<svg width="12" height="12" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.2L3.6 17.2a1.6 1.6 0 0 0 2.3 2.3l5.7-5.7a4 4 0 0 0 5.2-5.4l-2.4 2.4-2.1-.3-.3-2.1z" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/></svg>`;
 const WRENCH = `<svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.2L3.6 17.2a1.6 1.6 0 0 0 2.3 2.3l5.7-5.7a4 4 0 0 0 5.2-5.4l-2.4 2.4-2.1-.3-.3-2.1z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>`;
 
 function renderServiceBadges(C){
@@ -645,6 +667,8 @@ function renderService(C){
         <div class="svc-main"><span class="svc-left">${dueText(s, rule)}</span><span class="muted">Due ${due}</span></div>
         <div class="meter svc-meter" aria-hidden="true"><span style="width:${Math.min(100, Math.max(0, s.pct * 100)).toFixed(1)}%"></span></div>
         <div class="svc-facts"><span>${every}</span>${est}<span>Last ${fmt(dOut(rule.lastKm), 0)} ${dU()} · ${longDate(rule.lastDate)}</span></div>
+        ${(() => { const lc = lastCostOf(rule), all = logsFor(rule).filter(x => x.cost != null), tot = sum(all, x => x.cost);
+          return lc ? `<div class="svc-paid"><span>Last paid <b>${money(lc.cost, 0)}</b> · ${longDate(lc.date)}</span>${all.length > 1 ? `<span>${money(tot, 0)} over ${all.length} services</span>` : ""}</div>` : ""; })()}
         ${rule.note ? `<div class="svc-note">${esc(rule.note)}</div>` : ""}
         <div class="svc-actions"><button class="btn" type="button" data-done="${esc(rule.id)}">Mark done</button><button class="btn ghost" type="button" data-rule-edit="${esc(rule.id)}">Edit</button></div>
       </div>`;
@@ -681,6 +705,7 @@ function openRule(id, preset){
   $("ruleForm").reset(); $("rMsg").hidden = true; $("rDelete").textContent = "Delete";
   $("rKmLbl").textContent = "Every (" + dU() + ")";
   $("rLastKmLbl").textContent = "Last done at (" + settings.odoUnit + ")";
+  $("rCostLbl").textContent = "Cost last time (" + curSymbol(curCode(settings.currency)) + ")";
   const latest = compute().list.pop();
   if (editingRuleId){
     const r = rules.find(x => x.id === editingRuleId);
@@ -689,6 +714,8 @@ function openRule(id, preset){
     $("rKm").value = r.everyKm ? Math.round(dOut(r.everyKm)) : "";
     $("rMonths").value = r.everyMonths || "";
     $("rLastKm").value = Math.round(kmToOdo(r.lastKm)); $("rLastDate").value = r.lastDate; $("rNote").value = r.note || "";
+    const lastLog = logsFor(r).find(x => x.date === r.lastDate);
+    $("rCost").value = lastLog && lastLog.cost != null ? lastLog.cost : "";
     $("rSubmit").textContent = "Save changes"; $("rDelete").hidden = false;
   } else {
     $("ruleTitle").textContent = "Add reminder";
@@ -719,6 +746,20 @@ $("ruleForm").addEventListener("submit", async ev => {
     const saved = await store.saveServiceRule(rule, editingRuleId);
     const i = rules.findIndex(x => x.id === saved.id);
     if (i >= 0) rules[i] = saved; else rules.push(saved);
+    // Keep the "last done" in the service history too, so it shows on the calendar with its cost.
+    const cost = parseFloat($("rCost").value), costVal = cost >= 0 ? +cost.toFixed(2) : null;
+    const lastLog = svcLog.find(x => x.ruleId === saved.id && x.date === saved.lastDate);
+    try{
+      if (lastLog){
+        if (lastLog.odo !== saved.lastKm || lastLog.cost !== costVal || lastLog.name !== saved.name){
+          const upd = await store.updateServiceLog(lastLog.id, {odo: saved.lastKm, cost: costVal, name: saved.name});
+          svcLog[svcLog.indexOf(lastLog)] = upd;
+        }
+      } else {
+        svcLog.push(await store.addServiceLog(saved, {date: saved.lastDate, odo: saved.lastKm, cost: costVal}));
+      }
+      svcLog.sort((a, b) => b.date.localeCompare(a.date));
+    }catch(e){ toast("Reminder saved, but the service history couldn't be updated."); }
     closeDialog(ruleSheet); render(); keepOffline();
     toast(wasEdit ? "Reminder saved" : saved.name + " reminder added");
   }catch(e){ fail("Couldn't save. Check your connection and try again."); }

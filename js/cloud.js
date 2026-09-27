@@ -85,6 +85,9 @@ const ruleFromRow = (r) => ({
   note: r.note,
 });
 
+const LOG_COLUMNS = "id, rule_id, name, service_date, odometer_km, cost, note";
+const logFromRow = (r) => ({ id: r.id, ruleId: r.rule_id, name: r.name, date: r.service_date, odo: r.odometer_km, cost: num(r.cost), note: r.note });
+
 const FILLUP_COLUMNS = "id, fill_date, odometer_km, liters, amount_paid, paid_by, partial_fill, note";
 
 export class FuelStore {
@@ -185,11 +188,11 @@ export class FuelStore {
   async listServiceLog() {
     const res = await this.supabase
       .from("fuel_service_log")
-      .select("id, rule_id, name, service_date, odometer_km, cost, note")
+      .select(LOG_COLUMNS)
       .order("service_date", { ascending: false })
       .limit(200);
     if (res.error) return null;
-    return res.data.map((r) => ({ id: r.id, ruleId: r.rule_id, name: r.name, date: r.service_date, odo: r.odometer_km, cost: num(r.cost), note: r.note }));
+    return res.data.map(logFromRow);
   }
 
   async saveServiceRule(rule, id) {
@@ -212,19 +215,30 @@ export class FuelStore {
   }
 
   // Records a service in the history and moves the rule's "last done" to it.
-  async markServiceDone(rule, done) {
-    const logRow = check(
+  // One entry in the service history (also what the calendar shows).
+  async addServiceLog(rule, done) {
+    return logFromRow(check(
       await this.supabase
         .from("fuel_service_log")
         .insert({ rule_id: rule.id, name: rule.name, service_date: done.date, odometer_km: done.odo, cost: done.cost ?? null, note: done.note || "" })
-        .select("id, rule_id, name, service_date, odometer_km, cost, note")
+        .select(LOG_COLUMNS)
         .single(),
-    );
+    ));
+  }
+
+  async updateServiceLog(id, fields) {
+    const row = {};
+    if ("odo" in fields) row.odometer_km = fields.odo;
+    if ("cost" in fields) row.cost = fields.cost ?? null;
+    if ("name" in fields) row.name = fields.name;
+    return logFromRow(check(await this.supabase.from("fuel_service_log").update(row).eq("id", id).select(LOG_COLUMNS).single()));
+  }
+
+  // Records a service in the history and moves the rule's "last done" to it.
+  async markServiceDone(rule, done) {
+    const log = await this.addServiceLog(rule, done);
     const updated = await this.saveServiceRule({ ...rule, lastKm: done.odo, lastDate: done.date }, rule.id);
-    return {
-      rule: updated,
-      log: { id: logRow.id, ruleId: logRow.rule_id, name: logRow.name, date: logRow.service_date, odo: logRow.odometer_km, cost: num(logRow.cost), note: logRow.note },
-    };
+    return { rule: updated, log };
   }
 
   async deleteServiceLog(id) {
