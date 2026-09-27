@@ -14,5 +14,5 @@ end;
 
 alter table public.fuel_settings drop constraint if exists fuel_settings_currency_check;
 alter table public.fuel_settings
-  alter column currency set default 'USD',
+  alter column currency set default 'PKR',
   add constraint fuel_settings_currency_check check (currency ~ '^[A-Z]{3}$');

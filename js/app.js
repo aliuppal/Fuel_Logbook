@@ -3,7 +3,7 @@ import { cloudConfigured, getUser, signInWithGoogle, signOut, onAuthChange, open
 const KM_PER_MI = 1.609344, GAL = {US:3.785411784, UK:4.54609};
 const MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 const MONL = ["January","February","March","April","May","June","July","August","September","October","November","December"];
-let entries = [], settings = {currency:"USD", gallon:"US", odoUnit:"km"};
+let entries = [], settings = {currency:"PKR", gallon:"US", odoUnit:"km"};
 let ui = {dist:"km", vol:"L", per:"month", f:"all", tab:"overview"};
 try{ Object.assign(ui, JSON.parse(localStorage.getItem("fuel-ui2") || "{}")); }catch(e){}
 function saveUi(){ try{ localStorage.setItem("fuel-ui2", JSON.stringify(ui)); }catch(e){} }
@@ -25,7 +25,9 @@ const fmt = (n, d=1) => n == null || !isFinite(n) ? "–" : n.toLocaleString(und
 const COMMON_CURRENCIES = ["PKR","USD","EUR","GBP","AED","SAR","QAR","OMR","KWD","BHD","INR","CAD","AUD","CNY","JPY"];
 const LEGACY_SYMBOLS = {"$":"USD", "Rs":"PKR", "Rs.":"PKR", "₨":"PKR", "€":"EUR", "£":"GBP", "₹":"INR"};
 // Older saves stored a symbol; turn anything that isn't an ISO code into one.
-const curCode = c => /^[A-Z]{3}$/.test(c || "") ? c : LEGACY_SYMBOLS[(c || "").trim()] || "USD";
+const DEFAULT_CURRENCY = "PKR";
+const QUICK_CURRENCIES = ["PKR","USD","EUR","GBP","AED","SAR"];
+const curCode = c => /^[A-Z]{3}$/.test(c || "") ? c : LEGACY_SYMBOLS[(c || "").trim()] || DEFAULT_CURRENCY;
 const moneyFormats = {};
 function moneyFormat(code, digits){
   const key = code + digits;
@@ -37,19 +39,42 @@ function moneyFormat(code, digits){
   return moneyFormats[key];
 }
 const money = (n, digits = 2) => n == null || !isFinite(n) ? "–" : moneyFormat(curCode(settings.currency), digits).format(n);
-function currencyLabel(code){
-  let name = code;
-  try{ name = new Intl.DisplayNames(undefined, {type:"currency"}).of(code) || code; }catch(e){}
-  const sym = moneyFormat(code, 0).formatToParts(0).find(p => p.type === "currency")?.value;
-  return code + " · " + name + (sym && sym !== code ? " (" + sym + ")" : "");
+const curSymbol = code => moneyFormat(code, 0).formatToParts(0).find(p => p.type === "currency")?.value || code;
+function curName(code){
+  try{ return new Intl.DisplayNames(undefined, {type:"currency"}).of(code) || code; }catch(e){ return code; }
 }
+function currencyLabel(code){
+  const sym = curSymbol(code);
+  return code + " · " + curName(code) + (sym !== code ? " (" + sym + ")" : "");
+}
+// Fills the Settings menu, the add/edit form menu and the quick-pick buttons.
 function fillCurrencySelect(){
   let all = [];
   try{ all = Intl.supportedValuesOf("currency"); }catch(e){}
   const rest = all.filter(c => !COMMON_CURRENCIES.includes(c));
   const opt = c => `<option value="${c}">${esc(currencyLabel(c))}</option>`;
-  $("sCur").innerHTML = `<optgroup label="Common">${COMMON_CURRENCIES.map(opt).join("")}</optgroup>` +
+  const html = `<optgroup label="Common">${COMMON_CURRENCIES.map(opt).join("")}</optgroup>` +
     (rest.length ? `<optgroup label="All currencies">${rest.map(opt).join("")}</optgroup>` : "");
+  $("sCur").innerHTML = html;
+  $("fCur").innerHTML = html;
+  $("curQuick").innerHTML = QUICK_CURRENCIES.map(c =>
+    `<button type="button" class="fchip" data-cur="${c}" title="${esc(curName(c))}">${esc(curSymbol(c) !== c ? curSymbol(c) + " " + c : c)}</button>`).join("");
+}
+function setCurrency(code){
+  if (curCode(settings.currency) === code) return;
+  settings.currency = code; render(); saveSettings();
+  toast("Currency set to " + curName(code) + " (" + code + ")");
+}
+function renderCurrency(){
+  const code = curCode(settings.currency), sym = curSymbol(code);
+  $("sCur").value = code;
+  $("curSym").textContent = sym;
+  $("curName").textContent = curName(code);
+  $("curCode").textContent = code + " · used for all amounts";
+  document.querySelectorAll("[data-cur]").forEach(b => b.setAttribute("aria-pressed", b.dataset.cur === code));
+  if (document.activeElement !== $("fCur")) $("fCur").value = code;
+  $("fPaidLbl").textContent = "Total paid (" + sym + ")";
+  $("fPpuLbl").textContent = "Price per " + vU() + " (" + sym + ")";
 }
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const sum = (a, f) => a.reduce((t, x) => t + f(x), 0);
@@ -100,7 +125,7 @@ function render(){
   document.querySelectorAll("[data-tab]").forEach(b => b.setAttribute("aria-selected", b.dataset.tab === ui.tab));
   document.querySelectorAll("[data-view]").forEach(v => v.hidden = v.dataset.view !== ui.tab);
   document.querySelectorAll(".eu").forEach(el => el.textContent = econUnit());
-  $("sCur").value = curCode(settings.currency);
+  renderCurrency();
   $("sGal").value = settings.gallon; $("sOdo").value = settings.odoUnit;
 
   const fills = list.filter(e => e.liters > 0);
@@ -356,7 +381,7 @@ function openSheet(id, focus){
   $("form").reset(); $("fMsg").hidden = true; delArmed = false; $("fDelete").textContent = "Delete";
   $("fOdoLbl").textContent = "Odometer (" + settings.odoUnit + ")";
   $("fVolLbl").textContent = "Fuel (" + vU() + ")";
-  $("fPpuLbl").textContent = "Price per " + vU();
+  renderCurrency();
   const list = compute().list, last = list[list.length-1];
   $("fOdo").placeholder = last ? "Last: " + (settings.odoUnit === "mi" ? Math.round(last.odo / KM_PER_MI) : last.odo) : "e.g. 84120";
   if (editingId){
@@ -466,7 +491,9 @@ function bind(attr, key, after){
 }
 bind("dist", "dist"); bind("vol", "vol"); bind("per", "per"); bind("f", "f"); bind("tab", "tab");
 $("todoGo").addEventListener("click", () => { ui.tab = "log"; ui.f = "noprice"; saveUi(); render(); scrollTo(0,0); });
-$("sCur").addEventListener("change", () => { settings.currency = $("sCur").value; render(); saveSettings(); toast("Currency set to " + settings.currency); });
+$("sCur").addEventListener("change", () => setCurrency($("sCur").value));
+$("fCur").addEventListener("change", () => setCurrency($("fCur").value));
+$("curQuick").addEventListener("click", ev => { const b = ev.target.closest("[data-cur]"); if (b) setCurrency(b.dataset.cur); });
 $("sGal").addEventListener("change", () => { settings.gallon = $("sGal").value; render(); saveSettings(); });
 $("sOdo").addEventListener("change", () => { settings.odoUnit = $("sOdo").value; render(); saveSettings(); });
 let rz = null;
@@ -523,7 +550,7 @@ async function enterApp(user){
 }
 function leaveApp(){
   currentUserId = null; store = null; entries = []; loaded = false;
-  settings = {currency:"USD", gallon:"US", odoUnit:"km"};
+  settings = {currency:"PKR", gallon:"US", odoUnit:"km"};
   if (sheet.open) closeSheet();
   $("googleSignIn").disabled = false;
   showScreen("signin");

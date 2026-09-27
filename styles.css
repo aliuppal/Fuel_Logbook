@@ -228,3 +228,14 @@ img{max-width:100%}
 .welcome h2{font-size:30px}
 .welcome p{margin:0;max-width:62ch;color:var(--muted)}
 .welcome ol{margin:0;padding-left:20px;display:grid;gap:4px}
+
+/* ---------- currency ---------- */
+.cur-set{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px 20px;align-items:end;padding-bottom:16px;border-bottom:1px solid var(--grid)}
+.cur-now{display:grid;gap:8px;grid-row:span 2;align-self:start}
+.cur-selected{display:flex;gap:12px;align-items:center;background:var(--accent-soft);border:1.5px solid var(--accent);border-radius:14px;padding:12px 14px}
+.cur-selected div{display:grid;line-height:1.3}
+.cur-selected strong{font-size:16px}
+.cur-selected span{font-size:13px;color:var(--muted)}
+.cur-sym{flex:none;min-width:48px;height:48px;padding:0 8px;border-radius:12px;background:var(--accent);color:#1B0F02;display:grid;place-items:center;font-family:var(--display);font-weight:700;font-size:22px}
+.cur-quick{display:flex;flex-wrap:wrap;gap:6px}
+@media (max-width:640px){ .cur-set{grid-template-columns:1fr} .cur-now{grid-row:auto} }

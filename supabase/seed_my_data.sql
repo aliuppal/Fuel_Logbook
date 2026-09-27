@@ -54,7 +54,7 @@ begin
     (uid, '2026-09-25', 83780, 30.07, null, 'self', false, '');
 
   insert into public.fuel_settings (user_id, currency, gallon_type, odometer_unit)
-  values (uid, 'USD', 'US', 'km')
+  values (uid, 'PKR', 'US', 'km')
   on conflict (user_id) do nothing;
 
   raise notice 'Loaded 28 entries into %.', account_email;

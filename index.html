@@ -159,8 +159,15 @@
   <section class="view" data-view="settings" hidden>
     <div class="panel">
       <h2>Settings</h2>
+      <div class="cur-set">
+        <div class="cur-now">
+          <span class="lbl">Currency</span>
+          <div class="cur-selected"><span class="cur-sym" id="curSym">Rs</span><div><strong id="curName">Pakistani Rupee</strong><span id="curCode">PKR · used for all amounts</span></div></div>
+        </div>
+        <div class="cur-quick" role="group" aria-label="Choose currency" id="curQuick"></div>
+        <label class="cur-more">More currencies<select id="sCur"></select></label>
+      </div>
       <div class="settings">
-        <label>Currency<select id="sCur"></select></label>
         <label>Gallon type<select id="sGal"><option value="US">US gallon (3.785 L)</option><option value="UK">UK gallon (4.546 L)</option></select></label>
         <label>My odometer reads in<select id="sOdo"><option value="km">Kilometers</option><option value="mi">Miles</option></select></label>
       </div>
@@ -185,9 +192,12 @@
     <div class="preview" id="preview">Enter the odometer reading to see the distance since your last fill-up.</div>
     <div class="row2">
       <label><span id="fVolLbl">Fuel (L)</span><input type="number" id="fVol" inputmode="decimal" min="0" step="0.01" placeholder="Leave blank for reading only"></label>
-      <label>Total paid<input type="number" id="fPaid" inputmode="decimal" min="0" step="0.01" placeholder="Optional"></label>
+      <label><span id="fPaidLbl">Total paid</span><input type="number" id="fPaid" inputmode="decimal" min="0" step="0.01" placeholder="Optional"></label>
     </div>
-    <label><span id="fPpuLbl">Price per L</span><input type="number" id="fPpu" inputmode="decimal" min="0" step="0.001" placeholder="Fills in from total paid, or type it"></label>
+    <div class="row2">
+      <label><span id="fPpuLbl">Price per L</span><input type="number" id="fPpu" inputmode="decimal" min="0" step="0.001" placeholder="Optional"></label>
+      <label>Currency<select id="fCur"></select></label>
+    </div>
     <div style="display:grid;gap:6px">
       <span class="lbl">Paid by</span>
       <div class="payer" role="group" aria-label="Paid by">
