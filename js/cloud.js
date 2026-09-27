@@ -106,6 +106,25 @@ export class FuelStore {
     check(await this.supabase.from("fuel_fillups").delete().eq("id", id));
   }
 
+  // Refreshes name, photo and last-seen time on sign-in and returns the profile
+  // (the database creates it on first sign-in). Resolves null if it isn't there.
+  async touchProfile() {
+    const m = this.user.user_metadata || {};
+    const row = check(
+      await this.supabase
+        .from("fuel_profiles")
+        .update({
+          full_name: m.full_name || m.name || "",
+          avatar_url: m.avatar_url || m.picture || null,
+          last_seen_at: new Date().toISOString(),
+        })
+        .eq("id", this.user.id)
+        .select("email, full_name, avatar_url, created_at")
+        .maybeSingle(),
+    );
+    return row && { email: row.email, name: row.full_name, avatar: row.avatar_url, since: row.created_at };
+  }
+
   async getSettings() {
     const row = check(await this.supabase.from("fuel_settings").select("currency, gallon_type, odometer_unit").maybeSingle());
     return row ? { currency: row.currency, gallon: row.gallon_type, odoUnit: row.odometer_unit } : null;

@@ -582,6 +582,12 @@ function renderAccount(user){
   btn.style.backgroundImage = pic ? `url("${pic.replace(/"/g, "%22")}")` : "";
   $("welcomeTitle").textContent = "Welcome, " + name.split(" ")[0];
 }
+function showProfile(p){
+  if (!p || !p.since) return;
+  const d = new Date(p.since);
+  $("accountSince").textContent = "Member since " + MONL[d.getMonth()] + " " + d.getFullYear();
+  $("accountSince").hidden = false;
+}
 function toggleMenu(open){ $("accountMenu").hidden = !open; $("accountBtn").setAttribute("aria-expanded", open); }
 $("accountBtn").addEventListener("click", ev => { ev.stopPropagation(); toggleMenu($("accountMenu").hidden); });
 document.addEventListener("click", ev => { if (!ev.target.closest(".account")) toggleMenu(false); });
@@ -600,6 +606,8 @@ async function enterApp(user){
   loaded = false; entries = []; render();
   try{
     store = await openStore(user);
+    // The profile isn't needed to use the log, so a missing one never blocks loading.
+    store.touchProfile().then(showProfile, () => {});
     const [rows, saved] = await Promise.all([store.listEntries(), store.getSettings()]);
     entries = rows;
     if (saved) Object.assign(settings, saved);
@@ -611,6 +619,7 @@ async function enterApp(user){
 }
 function leaveApp(){
   currentUserId = null; store = null; entries = []; loaded = false;
+  $("accountSince").hidden = true;
   settings = {currency:"PKR", gallon:"US", odoUnit:"km"};
   if (sheet.open) closeSheet();
   $("googleSignIn").disabled = false;
