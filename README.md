@@ -28,56 +28,50 @@ start with an empty log.
 
 Distances are stored in km and fuel in liters; the app converts for display.
 
+## Where it runs
+
+Fuel Logbook has its own GitHub repository, Supabase project and Google sign-in client; nothing is
+shared with other apps. Every push to `main` redeploys both sites:
+
+| Site | URL | How it deploys |
+|---|---|---|
+| Vercel | https://fuel-logbook.vercel.app/ | Vercel project `fuel-logbook`, connected to the GitHub repo |
+| GitHub Pages | https://aliuppal.github.io/Fuel_Logbook/ | *Settings → Pages*: deploy from branch `main`, folder `/` |
+| Local | http://localhost:8081/ | `npm start` |
+
+Code: https://github.com/aliuppal/Fuel_Logbook
+
 ## Setup
 
-Fuel Logbook has its own Supabase project, Google sign-in client, GitHub repository and GitHub
-Pages site; nothing is shared with other apps. Do the steps in this order.
+### 1. Supabase
 
-### 1. GitHub repository
+1. *SQL Editor*: paste `supabase/migrations/20260929000000_fuel_logbook.sql` and run it.
+2. `js/config.js` holds the project's **Project URL** and **anon / publishable** key
+   (*Project Settings → API*). Never use the `service_role` key.
+3. *Authentication → URL Configuration*:
+   - *Site URL*: `https://fuel-logbook.vercel.app/`
+   - *Redirect URLs*: `https://fuel-logbook.vercel.app/`, `https://aliuppal.github.io/Fuel_Logbook/`
+     and `http://localhost:8081/`
 
-1. Create an **empty** repository at https://github.com/new named `Fuel_Logbook` (no README,
-   license or .gitignore). It must be **public** for GitHub Pages on a free account.
-2. Push this folder:
-   ```sh
-   git remote add origin https://github.com/aliuppal/Fuel_Logbook.git
-   git push -u origin main
-   ```
-3. In the repository, *Settings → Pages → Build and deployment → Source*: choose
-   **GitHub Actions**. `.github/workflows/pages.yml` then publishes the site on every push to
-   `main`, at https://aliuppal.github.io/Fuel_Logbook/.
-
-### 2. Supabase project
-
-1. Create a project at https://supabase.com/dashboard (for example `fuel-logbook`).
-2. *SQL Editor*: paste `supabase/migrations/20260929000000_fuel_logbook.sql` and run it.
-3. *Project Settings → API*: copy the **Project URL** and the **anon / publishable** key into
-   `js/config.js`. Never use the `service_role` key.
-4. *Authentication → URL Configuration*:
-   - *Site URL*: `https://aliuppal.github.io/Fuel_Logbook/`
-   - *Redirect URLs*: `https://aliuppal.github.io/Fuel_Logbook/` and `http://localhost:8081/`
-
-### 3. Google sign-in
+### 2. Google sign-in
 
 1. At https://console.cloud.google.com create a new project (for example `Fuel Logbook`).
-2. *APIs & Services → OAuth consent screen* (Google Auth Platform → Branding): choose
-   **External**, app name `Fuel Logbook`, your support email, and publish the app
-   (*Audience → Publish app*) so any Google account can sign in, not only test users.
-3. *Credentials → Create credentials → OAuth client ID → Web application*:
-   - *Authorized JavaScript origins*: `https://aliuppal.github.io` and `http://localhost:8081`
-   - *Authorized redirect URIs*: `https://<your-project-ref>.supabase.co/auth/v1/callback`
-     (Supabase shows this exact URL on its Google provider page).
+2. *Google Auth Platform → Branding*: app name `Fuel Logbook`, your support email. Under
+   *Audience* choose **External** and **Publish app**, so any Google account can sign in, not only
+   test users.
+3. *Clients → Create client → Web application*:
+   - *Authorized JavaScript origins*: `https://fuel-logbook.vercel.app`, `https://aliuppal.github.io`
+     and `http://localhost:8081`
+   - *Authorized redirect URIs*: `https://nmithewveywisilucruv.supabase.co/auth/v1/callback`
 4. In Supabase, *Authentication → Sign In / Providers → Google*: turn it on and paste the
    **Client ID** and **Client secret**.
 
-### 4. Go live
+### 3. Load your existing history (owner only)
 
-1. Commit and push the updated `js/config.js`; the site redeploys by itself.
-2. Open https://aliuppal.github.io/Fuel_Logbook/ (or run `npm start` for
-   http://localhost:8081) and choose **Continue with Google**.
-3. **Load your existing history (owner only):** after signing in once, paste
-   `supabase/seed_my_data.sql` into Supabase's *SQL Editor* and run it. It adds the 28 existing
-   entries to the account named at the top of the file and does nothing if that account already
-   has fill-ups. Everyone else starts with an empty log.
+Open the app, choose **Continue with Google** once, then paste `supabase/seed_my_data.sql` into
+Supabase's *SQL Editor* and run it. It adds the 28 existing entries to the account named at the
+top of the file and does nothing if that account already has fill-ups. Everyone else starts with
+an empty log.
 
 ## Project layout
 
@@ -89,5 +83,4 @@ js/cloud.js                Supabase client, Google sign-in, table access
 js/config.js               Supabase URL and anon key
 supabase/migrations/       Table definitions and row-level security
 supabase/seed_my_data.sql  One-time import of the owner's existing data
-.github/workflows/pages.yml Deploys the site to GitHub Pages on every push to main
 ```
