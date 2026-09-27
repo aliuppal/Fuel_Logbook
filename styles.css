@@ -332,3 +332,16 @@ body{-webkit-tap-highlight-color:transparent;overscroll-behavior-y:none}
 .fc-next.due{background:var(--warn-soft);border-color:color-mix(in srgb,var(--warn) 45%,transparent);color:var(--warn)}
 .fc-next.due .fn-when .lbl{color:var(--warn)}
 @media (max-width:640px){ .fn-facts{margin-left:0;width:100%} }
+
+/* ---------- calendar: who paid ---------- */
+.cal-d.pay-card{background:var(--card-soft);border-color:color-mix(in srgb,var(--card) 45%,transparent)}
+.cal-d.pay-me{background:var(--me-soft);border-color:color-mix(in srgb,var(--me) 45%,transparent)}
+.cal-d.pay-both{background:linear-gradient(135deg,var(--card-soft) 50%,var(--me-soft) 50%);border-color:color-mix(in srgb,var(--card) 30%,var(--me) 30%)}
+.cal-d.pay-card:hover{background:color-mix(in srgb,var(--card) 22%,var(--surface))}
+.cal-d.pay-me:hover{background:color-mix(in srgb,var(--me) 22%,var(--surface))}
+.cal-d.pay-card .cal-n{color:var(--card)}
+.cal-d.pay-me .cal-n{color:var(--me)}
+.cal-d.today .cal-n{color:#1B0F02}
+.cal-d.sel{border-color:var(--ink)}
+.no-card .cal-d.pay-card,.no-card .cal-d.pay-me,.no-card .cal-d.pay-both{background:var(--surface-2);border-color:var(--grid)}
+.no-card .cal-d .cal-n{color:inherit}

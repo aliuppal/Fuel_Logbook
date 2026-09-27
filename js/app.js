@@ -523,6 +523,9 @@ function renderCalendar(C){
     if (ds === today) cls.push("today");
     if (ds === calSel) cls.push("sel");
     if (es.length) cls.push("has");
+    // Tint the day by who paid: fuel card, me, or both.
+    const fl = es.filter(e => e.liters > 0), anyCard = fl.some(isCard), anyMe = fl.some(e => !isCard(e));
+    if (anyCard && anyMe) cls.push("pay-both"); else if (anyCard) cls.push("pay-card"); else if (anyMe) cls.push("pay-me");
     if (ds > today) cls.push("future");
     const marks = es.slice(0, 2).map(e => {
       if (!(e.liters > 0)) return `<span class="cal-m read">Reading</span>`;
