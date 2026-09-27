@@ -239,3 +239,37 @@ img{max-width:100%}
 .cur-sym{flex:none;min-width:48px;height:48px;padding:0 8px;border-radius:12px;background:var(--accent);color:#1B0F02;display:grid;place-items:center;font-family:var(--display);font-weight:700;font-size:22px}
 .cur-quick{display:flex;flex-wrap:wrap;gap:6px}
 @media (max-width:640px){ .cur-set{grid-template-columns:1fr} .cur-now{grid-row:auto} }
+
+/* ---------- calendar ---------- */
+.calnav{display:flex;align-items:center;gap:4px}
+.caltitle{font-family:var(--display);font-size:20px;font-weight:600;min-width:150px;text-align:center}
+.calsum{display:flex;flex-wrap:wrap;gap:4px 18px;font-size:13.5px;color:var(--muted);align-items:baseline}
+.calsum b{color:var(--ink);font-family:var(--display);font-size:19px;font-weight:600}
+.cal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
+.cal-wd{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);font-weight:600;text-align:center;padding:2px 0 4px}
+.cal-d{min-height:86px;min-width:0;overflow:hidden;border:1px solid var(--grid);background:var(--surface);border-radius:10px;padding:5px 6px;display:flex;flex-direction:column;gap:3px;align-items:stretch;text-align:left;cursor:pointer}
+.cal-d:hover{border-color:var(--line);background:var(--surface-2)}
+.cal-d.has{background:var(--surface-2)}
+.cal-d.future{opacity:.5}
+.cal-d.sel{border-color:var(--ink);box-shadow:0 0 0 1px var(--ink)}
+.cal-n{align-self:flex-start;min-width:22px;height:22px;padding:0 5px;border-radius:99px;display:grid;place-items:center;font-size:12.5px;font-weight:600}
+.cal-d.today .cal-n{background:var(--accent);color:#1B0F02}
+.cal-m{display:flex;align-items:center;gap:4px;min-width:0;font-size:11.5px;color:var(--muted);white-space:nowrap}
+.cal-m .dot{width:7px;height:7px;margin:0;flex:none}
+.cal-v{overflow:hidden;text-overflow:ellipsis}
+.cal-m b{margin-left:auto;font-family:var(--display);font-size:15px;font-weight:600;color:var(--ink)}
+.cal-m.good b{color:var(--good)}
+.cal-m.poor b{color:var(--warn)}
+.cal-m.read{font-style:italic}
+.cal-more{font-size:11px;color:var(--muted)}
+.calday{border-top:1px solid var(--grid);padding-top:4px}
+.calday-h{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;padding:8px 2px}
+.calday-h h3{font-size:19px}
+@media (max-width:640px){
+  .cal{gap:3px}
+  .cal-d{min-height:60px;padding:4px}
+  .cal-v{display:none}
+  .cal-m b{margin-left:0;font-size:13px}
+  .cal-wd{font-size:10px;letter-spacing:0}
+  .caltitle{min-width:118px;font-size:18px}
+}

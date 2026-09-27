@@ -196,6 +196,7 @@ function renderOverview(C, fills){
   }).join("");
 
   renderChart(segs, overall.e);
+  renderCalendar(C);
   const recent = list.slice(-5).reverse();
   $("recent").innerHTML = recent.length ? recent.map(e => entryRow(e, C)).join("") : `<p class="empty">${loaded ? "No entries yet. Add your first fill-up." : "Loading…"}</p>`;
 }
@@ -254,6 +255,65 @@ function renderLog(C){
       <div class="list">${g.items.map(e => entryRow(e, C)).join("")}</div>`;
   }).join("");
 }
+
+/* ---------- calendar ---------- */
+let calMonth = null, calSel = null; // "YYYY-MM" shown, "YYYY-MM-DD" selected
+const WEEKDAYS = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
+function shiftMonth(k, n){ const [y,m] = k.split("-").map(Number); return iso(new Date(y, m-1+n, 1)).slice(0,7); }
+
+function renderCalendar(C){
+  const today = todayIso();
+  if (!calMonth) calMonth = monthKey(today);
+  const [y,m] = calMonth.split("-").map(Number);
+  $("calTitle").textContent = MONL[m-1] + " " + y;
+  $("calToday").hidden = calMonth === monthKey(today);
+
+  const byDay = {};
+  C.list.forEach(e => { if (monthKey(e.date) === calMonth) (byDay[e.date] ||= []).push(e); });
+
+  const fl = C.list.filter(e => monthKey(e.date) === calMonth && e.liters > 0);
+  const ma = agg(C.segs.filter(s => monthKey(s.date) === calMonth));
+  $("calSum").innerHTML = fl.length
+    ? `<span><b>${fl.length}</b> fill-ups</span><span><b>${fmt(vOut(sum(fl, e => e.liters)),1)}</b> ${vU()}</span>` +
+      `<span><b>${fmt(ma.e)}</b> ${econUnit()} average</span><span><b>${money(sum(fl, e => e.paid > 0 ? e.paid : 0))}</b> spent</span>`
+    : `<span>No fill-ups in ${MONL[m-1]} ${y}.</span>`;
+
+  const lead = (new Date(y, m-1, 1).getDay() + 6) % 7, days = new Date(y, m, 0).getDate();
+  let h = WEEKDAYS.map(d => `<div class="cal-wd" role="columnheader">${d}</div>`).join("");
+  for (let i = 0; i < lead; i++) h += `<div class="cal-pad" aria-hidden="true"></div>`;
+  for (let d = 1; d <= days; d++){
+    const ds = calMonth + "-" + String(d).padStart(2,"0"), es = byDay[ds] || [];
+    const cls = ["cal-d"];
+    if (ds === today) cls.push("today");
+    if (ds === calSel) cls.push("sel");
+    if (es.length) cls.push("has");
+    if (ds > today) cls.push("future");
+    const marks = es.slice(0, 2).map(e => {
+      if (!(e.liters > 0)) return `<span class="cal-m read">Reading</span>`;
+      const s = C.segById[e.id], ev = s ? econ(s.dist, s.lit) : null;
+      return `<span class="cal-m ${rating(ev, C.overall.e)}"><i class="dot" style="background:var(--${isCard(e) ? "card" : "me"})"></i>` +
+        `<span class="cal-v">${fmt(vOut(e.liters),1)} ${vU()}</span>${ev != null ? `<b>${fmt(ev)}</b>` : ""}</span>`;
+    }).join("") + (es.length > 2 ? `<span class="cal-more">+${es.length - 2} more</span>` : "");
+    const label = longDate(ds) + (es.length ? ", " + es.length + (es.length > 1 ? " entries" : " entry") : "");
+    h += `<button type="button" class="${cls.join(" ")}" data-day="${ds}" aria-label="${label}" aria-pressed="${ds === calSel}"><span class="cal-n">${d}</span>${marks}</button>`;
+  }
+  $("cal").innerHTML = h;
+
+  // Entries for the selected day, with edit / price / payer controls from the log.
+  const box = $("calDay");
+  box.hidden = !calSel || monthKey(calSel) !== calMonth;
+  if (box.hidden) return;
+  const es = byDay[calSel] || [];
+  box.innerHTML = `<div class="calday-h"><h3>${longDate(calSel)}</h3><button class="btn ghost" type="button" data-addon="${calSel}">＋ Add fill-up on this day</button></div>` +
+    (es.length ? `<div class="list">${es.slice().reverse().map(e => entryRow(e, C)).join("")}</div>` : `<p class="empty">No fill-ups on this day.</p>`);
+}
+$("cal").addEventListener("click", ev => {
+  const b = ev.target.closest("[data-day]"); if (!b) return;
+  calSel = calSel === b.dataset.day ? null : b.dataset.day; render();
+});
+$("calPrev").addEventListener("click", () => { calMonth = shiftMonth(calMonth, -1); render(); });
+$("calNext").addEventListener("click", () => { calMonth = shiftMonth(calMonth, 1); render(); });
+$("calToday").addEventListener("click", () => { calMonth = monthKey(todayIso()); calSel = null; render(); });
 
 /* ---------- charts ---------- */
 function niceScale(lo, hi, n){
@@ -376,7 +436,7 @@ const bodyOf = e => ({date:e.date, odo:e.odo, liters:e.liters ?? null, paid:e.pa
 /* ---------- sheet ---------- */
 const sheet = $("sheet");
 function setPayer(p){ payer = p; document.querySelectorAll(".payer button").forEach(b => b.setAttribute("aria-pressed", b.dataset.p === p)); }
-function openSheet(id, focus){
+function openSheet(id, focus, date){
   editingId = id || null;
   $("form").reset(); $("fMsg").hidden = true; delArmed = false; $("fDelete").textContent = "Delete";
   $("fOdoLbl").textContent = "Odometer (" + settings.odoUnit + ")";
@@ -396,7 +456,7 @@ function openSheet(id, focus){
     $("fPartial").checked = !!e.partial; $("fNote").value = e.note || "";
     $("fSubmit").textContent = "Save changes"; $("fDelete").hidden = false;
   } else {
-    $("sheetTitle").textContent = "Add fill-up"; $("fDate").value = todayIso(); setPayer(last && last.liters > 0 && isCard(last) ? "card" : "self");
+    $("sheetTitle").textContent = "Add fill-up"; $("fDate").value = date || todayIso(); setPayer(last && last.liters > 0 && isCard(last) ? "card" : "self");
     $("fSubmit").textContent = "Add fill-up"; $("fDelete").hidden = true;
   }
   lastPriceEdit = "paid";
@@ -471,9 +531,10 @@ $("fDelete").addEventListener("click", async () => {
 
 /* ---------- list actions ---------- */
 document.addEventListener("click", async ev => {
-  const t = ev.target.closest("[data-toggle],[data-price],[data-edit],[data-goto]");
+  const t = ev.target.closest("[data-toggle],[data-price],[data-edit],[data-goto],[data-addon]");
   if (!t) return;
   if (t.dataset.goto){ ui.tab = t.dataset.goto; saveUi(); render(); scrollTo(0,0); return; }
+  if (t.dataset.addon) return openSheet(null, null, t.dataset.addon);
   if (t.dataset.edit) return openSheet(t.dataset.edit);
   if (t.dataset.price) return openSheet(t.dataset.price, "fPaid");
   if (t.dataset.toggle){

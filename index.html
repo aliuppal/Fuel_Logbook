@@ -118,6 +118,27 @@
     </div>
 
     <div class="panel dash">
+      <div class="panel-head">
+        <h2>Calendar</h2>
+        <div class="calnav">
+          <button class="iconbtn" type="button" id="calPrev" aria-label="Previous month"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3L5 8l5 5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+          <span class="caltitle" id="calTitle" aria-live="polite"></span>
+          <button class="iconbtn" type="button" id="calNext" aria-label="Next month"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3l5 5-5 5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+          <button class="fchip" type="button" id="calToday">Today</button>
+        </div>
+      </div>
+      <div class="calsum" id="calSum"></div>
+      <div class="cal" id="cal" role="grid" aria-labelledby="calTitle"></div>
+      <div class="legend">
+        <span><i class="dot" style="background:var(--good)"></i>Better than your average</span>
+        <span><i class="dot" style="background:var(--warn)"></i>Worse than your average</span>
+        <span><i class="dot" style="background:var(--card)"></i>Fuel card</span>
+        <span><i class="dot" style="background:var(--me)"></i>Me</span>
+      </div>
+      <div class="calday" id="calDay"></div>
+    </div>
+
+    <div class="panel dash">
       <div class="panel-head"><h2>Recent fill-ups</h2><button class="linkbtn" type="button" data-goto="log">See full log →</button></div>
       <div class="list" id="recent"></div>
     </div>
