@@ -75,6 +75,16 @@ const toRow = (e) => ({
   note: e.note || "",
 });
 
+const ruleFromRow = (r) => ({
+  id: r.id,
+  name: r.name,
+  everyKm: r.every_km,
+  everyMonths: r.every_months,
+  lastKm: r.last_done_km,
+  lastDate: r.last_done_date,
+  note: r.note,
+});
+
 const FILLUP_COLUMNS = "id, fill_date, odometer_km, liters, amount_paid, paid_by, partial_fill, note";
 
 export class FuelStore {
@@ -159,6 +169,66 @@ export class FuelStore {
       check(res);
       return;
     }
+  }
+
+  /* ---------- maintenance ---------- */
+  // Resolve null when the maintenance tables haven't been created yet.
+  async listServiceRules() {
+    const res = await this.supabase
+      .from("fuel_service_rules")
+      .select("id, name, every_km, every_months, last_done_km, last_done_date, note")
+      .order("created_at");
+    if (res.error) return null;
+    return res.data.map(ruleFromRow);
+  }
+
+  async listServiceLog() {
+    const res = await this.supabase
+      .from("fuel_service_log")
+      .select("id, rule_id, name, service_date, odometer_km, cost, note")
+      .order("service_date", { ascending: false })
+      .limit(200);
+    if (res.error) return null;
+    return res.data.map((r) => ({ id: r.id, ruleId: r.rule_id, name: r.name, date: r.service_date, odo: r.odometer_km, cost: num(r.cost), note: r.note }));
+  }
+
+  async saveServiceRule(rule, id) {
+    const row = {
+      name: rule.name,
+      every_km: rule.everyKm || null,
+      every_months: rule.everyMonths || null,
+      last_done_km: rule.lastKm,
+      last_done_date: rule.lastDate,
+      note: rule.note || "",
+    };
+    const q = id
+      ? this.supabase.from("fuel_service_rules").update(row).eq("id", id)
+      : this.supabase.from("fuel_service_rules").insert(row);
+    return ruleFromRow(check(await q.select("id, name, every_km, every_months, last_done_km, last_done_date, note").single()));
+  }
+
+  async deleteServiceRule(id) {
+    check(await this.supabase.from("fuel_service_rules").delete().eq("id", id));
+  }
+
+  // Records a service in the history and moves the rule's "last done" to it.
+  async markServiceDone(rule, done) {
+    const logRow = check(
+      await this.supabase
+        .from("fuel_service_log")
+        .insert({ rule_id: rule.id, name: rule.name, service_date: done.date, odometer_km: done.odo, cost: done.cost ?? null, note: done.note || "" })
+        .select("id, rule_id, name, service_date, odometer_km, cost, note")
+        .single(),
+    );
+    const updated = await this.saveServiceRule({ ...rule, lastKm: done.odo, lastDate: done.date }, rule.id);
+    return {
+      rule: updated,
+      log: { id: logRow.id, ruleId: logRow.rule_id, name: logRow.name, date: logRow.service_date, odo: logRow.odometer_km, cost: num(logRow.cost), note: logRow.note },
+    };
+  }
+
+  async deleteServiceLog(id) {
+    check(await this.supabase.from("fuel_service_log").delete().eq("id", id));
   }
 
   // Petrol prices per liter by date, oldest first. Empty if the table doesn't exist yet.

@@ -146,6 +146,8 @@ function render(){
 
   if (ui.tab === "overview") renderOverview(C, fills);
   if (ui.tab === "log") renderLog(C);
+  renderServiceBadges(C);
+  if (ui.tab === "service") renderService(C);
   if (ui.tab === "reports"){ renderSpendChart(list); renderBreakdown(list, segs); }
 }
 
@@ -556,6 +558,228 @@ $("calPrev").addEventListener("click", () => { calMonth = shiftMonth(calMonth, -
 $("calNext").addEventListener("click", () => { calMonth = shiftMonth(calMonth, 1); render(); });
 $("calToday").addEventListener("click", () => { calMonth = monthKey(todayIso()); calSel = null; render(); });
 
+/* ---------- maintenance ---------- */
+// rules is null until loaded, or when the maintenance tables don't exist yet.
+let rules = null, svcLog = [], editingRuleId = null, doneRuleId = null;
+const SERVICE_PRESETS = [
+  ["Oil change", 5000, 6], ["Oil filter", 10000, 12], ["Air filter", 15000, 12], ["Tyre rotation", 10000, null],
+  ["Brake check", 20000, 12], ["Coolant", 40000, 24], ["Spark plugs", 30000, null], ["Battery check", null, 12],
+];
+const kmFromDist = v => ui.dist === "km" ? v : v * KM_PER_MI;              // interval typed in km or miles
+const odoToKm = v => settings.odoUnit === "mi" ? v * KM_PER_MI : v;       // odometer as the car shows it
+const kmToOdo = km => settings.odoUnit === "mi" ? km / KM_PER_MI : km;
+function addMonths(s, n){
+  const [y, m, d] = s.split("-").map(Number);
+  const t = new Date(y, m - 1 + n, 1);
+  t.setDate(Math.min(d, new Date(t.getFullYear(), t.getMonth() + 1, 0).getDate()));
+  return iso(t);
+}
+// Due point of a rule, measured from its last service against the latest odometer reading.
+function ruleStatus(rule, C, rates){
+  const latest = C.list[C.list.length - 1];
+  const odo = latest ? Math.max(latest.odo, rule.lastKm) : rule.lastKm, T = dayNum(todayIso());
+  let dueKm = null, leftKm = null, pctKm = 0, kmDay = null;
+  if (rule.everyKm){
+    dueKm = rule.lastKm + rule.everyKm; leftKm = dueKm - odo; pctKm = (odo - rule.lastKm) / rule.everyKm;
+    if (rates && latest) kmDay = Math.max(T, Math.round(dayNum(latest.date) + leftKm / rates.kmPerDay));
+  }
+  let dueDate = null, leftDays = null, pctTime = 0;
+  if (rule.everyMonths){
+    dueDate = addMonths(rule.lastDate, rule.everyMonths); leftDays = dayNum(dueDate) - T;
+    pctTime = (T - dayNum(rule.lastDate)) / Math.max(1, dayNum(dueDate) - dayNum(rule.lastDate));
+  }
+  const overdue = (leftKm != null && leftKm <= 0) || (leftDays != null && leftDays < 0);
+  const soon = (leftKm != null && leftKm <= Math.max(500, rule.everyKm * 0.1)) || (leftDays != null && leftDays <= 14);
+  const days = [kmDay, dueDate ? dayNum(dueDate) : null].filter(x => x != null);
+  return {odo, dueKm, leftKm, dueDate, leftDays, kmDay, pct: Math.max(pctKm, pctTime),
+    state: overdue ? "overdue" : soon ? "soon" : "ok", nextDay: days.length ? Math.min(...days) : Infinity};
+}
+function serviceStatuses(C){
+  if (!rules || !C.list.length) return [];
+  const rates = drivingRates(C);
+  const rank = {overdue: 0, soon: 1, ok: 2};
+  return rules.map(rule => ({rule, s: ruleStatus(rule, C, rates)}))
+    .sort((a, b) => rank[a.s.state] - rank[b.s.state] || a.s.nextDay - b.s.nextDay);
+}
+const STATE_TEXT = {overdue: "Overdue", soon: "Due soon", ok: "OK"};
+function dueText(s, rule){
+  if (rule.everyKm) return s.leftKm > 0
+    ? `<b>${fmt(dOut(s.leftKm), 0)} ${dU()}</b> left`
+    : `<b>${fmt(dOut(-s.leftKm), 0)} ${dU()}</b> overdue`;
+  return s.leftDays >= 0 ? `<b>${s.leftDays} days</b> left` : `<b>${-s.leftDays} days</b> overdue`;
+}
+const WRENCH = `<svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.2L3.6 17.2a1.6 1.6 0 0 0 2.3 2.3l5.7-5.7a4 4 0 0 0 5.2-5.4l-2.4 2.4-2.1-.3-.3-2.1z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>`;
+
+function renderServiceBadges(C){
+  const due = serviceStatuses(C).filter(x => x.s.state !== "ok");
+  $("svcCount").hidden = !due.length; $("svcCount").textContent = due.length;
+  const a = $("svcAlert");
+  a.hidden = !due.length;
+  if (!due.length) return;
+  const {rule, s} = due[0];
+  a.className = "svc-alert dash " + s.state;
+  a.innerHTML = `${WRENCH}<span><b>${esc(rule.name)}</b> · ${STATE_TEXT[s.state]} · ${dueText(s, rule)}</span>` +
+    (due.length > 1 ? `<span class="muted">+${due.length - 1} more</span>` : "") + `<span class="svc-go">Service →</span>`;
+}
+
+function renderService(C){
+  const ready = rules !== null;
+  $("ruleAdd").disabled = !ready;
+  $("svcHistoryPanel").hidden = !ready || !svcLog.length;
+  const latest = C.list[C.list.length - 1];
+  $("svcNow").innerHTML = latest ? `<span>Latest reading <b>${fmt(dOut(latest.odo), 0)} ${dU()}</b> · ${longDate(latest.date)}</span>` : "";
+  if (!ready){
+    $("svcList").innerHTML = `<p class="empty">${loaded ? "Maintenance reminders aren't set up in the database yet. Run supabase/migrations/20261004000000_fuel_maintenance.sql in the Supabase SQL Editor." : "Loading…"}</p>`;
+    return;
+  }
+  const list = serviceStatuses(C);
+  $("svcList").innerHTML = !rules.length
+    ? `<div class="svc-empty"><p>Add a reminder for things like oil changes, and the app works out when each one is due from your odometer.</p>
+        <div class="presets">${SERVICE_PRESETS.slice(0, 4).map((p, i) => `<button type="button" class="fchip" data-preset-new="${i}">${esc(p[0])}</button>`).join("")}</div></div>`
+    : list.map(({rule, s}) => {
+      const every = [rule.everyKm ? "every " + fmt(dOut(rule.everyKm), 0) + " " + dU() : "", rule.everyMonths ? (rule.everyKm ? "or " : "every ") + rule.everyMonths + (rule.everyMonths === 1 ? " month" : " months") : ""].filter(Boolean).join(" ");
+      const due = [rule.everyKm ? "at " + fmt(dOut(s.dueKm), 0) + " " + dU() : "", s.dueDate ? (rule.everyKm ? "or by " : "by ") + longDate(s.dueDate) : ""].filter(Boolean).join(" ");
+      const est = s.state !== "overdue" && rule.everyKm && s.kmDay != null ? `<span>~${shortDate(dayStr(s.kmDay))}</span>` : "";
+      return `<div class="svc ${s.state}">
+        <div class="svc-h"><h3>${esc(rule.name)}</h3><span class="pill ${s.state}">${STATE_TEXT[s.state]}</span></div>
+        <div class="svc-main"><span class="svc-left">${dueText(s, rule)}</span><span class="muted">Due ${due}</span></div>
+        <div class="meter svc-meter" aria-hidden="true"><span style="width:${Math.min(100, Math.max(0, s.pct * 100)).toFixed(1)}%"></span></div>
+        <div class="svc-facts"><span>${every}</span>${est}<span>Last ${fmt(dOut(rule.lastKm), 0)} ${dU()} · ${longDate(rule.lastDate)}</span></div>
+        ${rule.note ? `<div class="svc-note">${esc(rule.note)}</div>` : ""}
+        <div class="svc-actions"><button class="btn" type="button" data-done="${esc(rule.id)}">Mark done</button><button class="btn ghost" type="button" data-rule-edit="${esc(rule.id)}">Edit</button></div>
+      </div>`;
+    }).join("");
+
+  const total = sum(svcLog, x => x.cost || 0);
+  $("svcHistMeta").innerHTML = svcLog.length ? `<span><b>${svcLog.length}</b> services</span>` + (total ? `<span><b>${money(total, 0)}</b> spent</span>` : "") : "";
+  $("svcHistory").innerHTML = svcLog.length
+    ? `<thead><tr><th>Date</th><th>Service</th><th class="num">Odometer</th><th class="num">Cost</th><th>Note</th><th></th></tr></thead><tbody>` +
+      svcLog.map(x => `<tr><td>${longDate(x.date)}</td><td>${esc(x.name)}</td><td class="num">${fmt(dOut(x.odo), 0)} ${dU()}</td>
+        <td class="num">${x.cost != null ? money(x.cost) : "–"}</td><td class="muted">${esc(x.note)}</td>
+        <td><button class="rowbtn" type="button" data-svc-del="${esc(x.id)}">Delete</button></td></tr>`).join("") + "</tbody>"
+    : "";
+}
+
+/* reminder form */
+const ruleSheet = $("ruleSheet"), doneSheet = $("doneSheet");
+const openDialog = d => d.showModal ? d.showModal() : d.setAttribute("open", "");
+const closeDialog = d => d.close ? d.close() : d.removeAttribute("open");
+document.querySelectorAll("[data-close]").forEach(b => b.addEventListener("click", () => closeDialog($(b.dataset.close))));
+[ruleSheet, doneSheet].forEach(d => d.addEventListener("click", ev => { if (ev.target === d) closeDialog(d); }));
+$("rulePresets").innerHTML = SERVICE_PRESETS.map((p, i) => `<button type="button" class="fchip" data-preset="${i}">${esc(p[0])}</button>`).join("");
+function applyPreset(i){
+  const [name, km, months] = SERVICE_PRESETS[i];
+  $("rName").value = name;
+  // Presets are in km; in miles they're rounded to the nearest 500.
+  $("rKm").value = !km ? "" : ui.dist === "km" ? km : Math.round(km / KM_PER_MI / 500) * 500;
+  $("rMonths").value = months || "";
+}
+$("rulePresets").addEventListener("click", ev => { const b = ev.target.closest("[data-preset]"); if (b) applyPreset(+b.dataset.preset); });
+let ruleDelArmed = false;
+function openRule(id, preset){
+  editingRuleId = id || null; ruleDelArmed = false;
+  $("ruleForm").reset(); $("rMsg").hidden = true; $("rDelete").textContent = "Delete";
+  $("rKmLbl").textContent = "Every (" + dU() + ")";
+  $("rLastKmLbl").textContent = "Last done at (" + settings.odoUnit + ")";
+  const latest = compute().list.pop();
+  if (editingRuleId){
+    const r = rules.find(x => x.id === editingRuleId);
+    $("ruleTitle").textContent = "Edit reminder";
+    $("rName").value = r.name;
+    $("rKm").value = r.everyKm ? Math.round(dOut(r.everyKm)) : "";
+    $("rMonths").value = r.everyMonths || "";
+    $("rLastKm").value = Math.round(kmToOdo(r.lastKm)); $("rLastDate").value = r.lastDate; $("rNote").value = r.note || "";
+    $("rSubmit").textContent = "Save changes"; $("rDelete").hidden = false;
+  } else {
+    $("ruleTitle").textContent = "Add reminder";
+    $("rLastKm").value = latest ? Math.round(kmToOdo(latest.odo)) : "";
+    $("rLastDate").value = latest ? latest.date : todayIso();
+    $("rSubmit").textContent = "Add reminder"; $("rDelete").hidden = true;
+    if (preset != null) applyPreset(preset);
+  }
+  $("rulePresets").hidden = !!editingRuleId;
+  openDialog(ruleSheet);
+  setTimeout(() => $(preset != null ? "rLastKm" : "rName").focus(), 30);
+}
+$("ruleAdd").addEventListener("click", () => openRule());
+$("ruleForm").addEventListener("submit", async ev => {
+  ev.preventDefault();
+  const msg = $("rMsg"), fail = t => { msg.hidden = false; msg.textContent = t; };
+  const name = $("rName").value.trim(), km = parseFloat($("rKm").value), months = parseInt($("rMonths").value, 10);
+  const lastOdo = parseFloat($("rLastKm").value), lastDate = $("rLastDate").value;
+  if (!name) return fail("Enter the name of the service.");
+  if (!(km > 0) && !(months > 0)) return fail("Set how often: a distance, a number of months, or both.");
+  if (!(lastOdo >= 0) || !lastDate) return fail("Enter when it was last done: odometer and date.");
+  if (!store) return fail("You're offline. Reminders need a connection to save.");
+  const rule = {name, everyKm: km > 0 ? Math.round(kmFromDist(km)) : null, everyMonths: months > 0 ? months : null,
+    lastKm: Math.round(odoToKm(lastOdo)), lastDate, note: $("rNote").value.trim()};
+  const wasEdit = !!editingRuleId;
+  $("rSubmit").disabled = true;
+  try{
+    const saved = await store.saveServiceRule(rule, editingRuleId);
+    const i = rules.findIndex(x => x.id === saved.id);
+    if (i >= 0) rules[i] = saved; else rules.push(saved);
+    closeDialog(ruleSheet); render(); keepOffline();
+    toast(wasEdit ? "Reminder saved" : saved.name + " reminder added");
+  }catch(e){ fail("Couldn't save. Check your connection and try again."); }
+  finally{ $("rSubmit").disabled = false; }
+});
+$("rDelete").addEventListener("click", async () => {
+  if (!ruleDelArmed){ ruleDelArmed = true; $("rDelete").textContent = "Tap again to delete"; return; }
+  try{
+    await store.deleteServiceRule(editingRuleId);
+    rules = rules.filter(x => x.id !== editingRuleId);
+    closeDialog(ruleSheet); render(); keepOffline(); toast("Reminder deleted");
+  }catch(e){ $("rMsg").hidden = false; $("rMsg").textContent = "Couldn't delete. Try again."; }
+});
+
+/* mark done */
+function openDone(id){
+  doneRuleId = id;
+  const r = rules.find(x => x.id === id), latest = compute().list.pop();
+  $("doneForm").reset(); $("dMsg").hidden = true;
+  $("doneTitle").textContent = r.name + " done";
+  $("dOdoLbl").textContent = "Odometer (" + settings.odoUnit + ")";
+  $("dCostLbl").textContent = "Cost (" + curSymbol(curCode(settings.currency)) + ")";
+  $("dDate").value = todayIso();
+  $("dOdo").value = Math.round(kmToOdo(latest ? Math.max(latest.odo, r.lastKm) : r.lastKm));
+  openDialog(doneSheet);
+  setTimeout(() => $("dOdo").focus(), 30);
+}
+$("doneForm").addEventListener("submit", async ev => {
+  ev.preventDefault();
+  const msg = $("dMsg"), fail = t => { msg.hidden = false; msg.textContent = t; };
+  const date = $("dDate").value, odo = parseFloat($("dOdo").value), cost = parseFloat($("dCost").value);
+  if (!date || !(odo >= 0)) return fail("Enter the date and the odometer reading.");
+  if (!store) return fail("You're offline. This needs a connection to save.");
+  const rule = rules.find(x => x.id === doneRuleId);
+  $("dSubmit").disabled = true;
+  try{
+    const res = await store.markServiceDone(rule, {date, odo: Math.round(odoToKm(odo)), cost: cost >= 0 ? +cost.toFixed(2) : null, note: $("dNote").value.trim()});
+    rules[rules.findIndex(x => x.id === rule.id)] = res.rule;
+    svcLog.unshift(res.log); svcLog.sort((a, b) => b.date.localeCompare(a.date));
+    closeDialog(doneSheet); render(); keepOffline();
+    toast(rule.name + " done" + (res.rule.everyKm ? ". Next at " + fmt(dOut(res.rule.lastKm + res.rule.everyKm), 0) + " " + dU() : ""));
+  }catch(e){ fail("Couldn't save. Check your connection and try again."); }
+  finally{ $("dSubmit").disabled = false; }
+});
+
+let svcDelArm = null;
+$("svcList").addEventListener("click", ev => {
+  const d = ev.target.closest("[data-done]"), e = ev.target.closest("[data-rule-edit]"), p = ev.target.closest("[data-preset-new]");
+  if (d) openDone(d.dataset.done);
+  else if (e) openRule(e.dataset.ruleEdit);
+  else if (p) openRule(null, +p.dataset.presetNew);
+});
+$("svcHistory").addEventListener("click", async ev => {
+  const b = ev.target.closest("[data-svc-del]"); if (!b) return;
+  const id = b.dataset.svcDel;
+  if (svcDelArm !== id){ svcDelArm = id; b.textContent = "Confirm"; setTimeout(() => { if (svcDelArm === id){ svcDelArm = null; b.textContent = "Delete"; } }, 4000); return; }
+  svcDelArm = null;
+  try{ await store.deleteServiceLog(id); svcLog = svcLog.filter(x => x.id !== id); render(); keepOffline(); toast("Service removed from history"); }
+  catch(e){ toast("Couldn't delete. Try again."); }
+});
+
 /* ---------- charts ---------- */
 function niceScale(lo, hi, n){
   const raw = (hi - lo) / n || 1, mag = Math.pow(10, Math.floor(Math.log10(raw)));
@@ -876,14 +1100,14 @@ $("welcomeAdd").addEventListener("click", () => openSheet());
 // without a connection. Changes still need a connection to save.
 const CACHE_KEY = "fuel-offline-v1";
 function saveOffline(user){
-  try{ localStorage.setItem(CACHE_KEY, JSON.stringify({user: {id: user.id, email: user.email, user_metadata: user.user_metadata}, entries, settings, prices, at: Date.now()})); }catch(e){}
+  try{ localStorage.setItem(CACHE_KEY, JSON.stringify({user: {id: user.id, email: user.email, user_metadata: user.user_metadata}, entries, settings, prices, rules, svcLog, at: Date.now()})); }catch(e){}
 }
 function readOffline(userId){
   try{ const c = JSON.parse(localStorage.getItem(CACHE_KEY) || "null"); return c && (!userId || c.user.id === userId) ? c : null; }catch(e){ return null; }
 }
 function clearOffline(){ try{ localStorage.removeItem(CACHE_KEY); }catch(e){} }
 function showOffline(c){
-  entries = c.entries || []; prices = c.prices || []; Object.assign(settings, c.settings || {});
+  entries = c.entries || []; prices = c.prices || []; rules = c.rules ?? null; svcLog = c.svcLog || []; Object.assign(settings, c.settings || {});
   loaded = true; render();
   const d = new Date(c.at);
   status("You're offline. Showing your log as of " + d.getDate() + " " + MON[d.getMonth()] + ", " + d.toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"}) + ". Changes need a connection.");
@@ -911,8 +1135,8 @@ fillCurrencySelect();
 let currentUserId = null, currentUser = null;
 async function reloadLog(){
   try{
-    const [rows, saved, pr] = await Promise.all([store.listEntries(), store.getSettings(), store.listPrices()]);
-    prices = pr;
+    const [rows, saved, pr, rl, sl] = await Promise.all([store.listEntries(), store.getSettings(), store.listPrices(), store.listServiceRules(), store.listServiceLog()]);
+    prices = pr; rules = rl; svcLog = sl || [];
     entries = rows;
     if (saved) Object.assign(settings, saved);
     loaded = true; status(""); render();
@@ -939,7 +1163,7 @@ async function enterApp(user){
   if (location.hash === "#add"){ history.replaceState(null, "", location.pathname); openSheet(); }
 }
 function leaveApp(){
-  currentUserId = null; currentUser = null; store = null; entries = []; loaded = false;
+  currentUserId = null; currentUser = null; store = null; entries = []; loaded = false; rules = null; svcLog = [];
   $("accountSince").hidden = true;
   settings = {currency:"PKR", gallon:"US", odoUnit:"km", cardLiters:0, cardAmount:0, cardType:"liters"};
   if (sheet.open) closeSheet();
