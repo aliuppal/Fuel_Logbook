@@ -302,16 +302,17 @@ body{-webkit-tap-highlight-color:transparent;overscroll-behavior-y:none}
 
 /* ---------- fuel card limit ---------- */
 .no-card .card-only{display:none!important}
-.limit-card{background:var(--card-soft);border:1px solid color-mix(in srgb,var(--card) 35%,transparent);border-radius:16px;padding:14px 18px;display:grid;gap:8px}
-.limit-top{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:baseline}
-.limit-top .lbl{color:var(--card)}
-.limit-main{display:flex;gap:8px;align-items:baseline}
-.limit-left{font-family:var(--display);font-weight:700;font-size:40px;line-height:1;color:var(--card)}
-.meter{height:10px;border-radius:99px;background:color-mix(in srgb,var(--card) 18%,var(--surface));overflow:hidden}
+.limit-bar{display:flex;align-items:center;gap:8px 14px;flex-wrap:wrap;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:9px 14px;font-size:13.5px}
+.lb-name{display:flex;align-items:center;gap:6px;font-weight:600;white-space:nowrap}
+.lb-name .dot{margin:0}
+.limit-bar .meter{flex:1 1 140px;min-width:100px}
+.lb-left{white-space:nowrap;color:var(--muted)}
+.lb-left b{font-family:var(--display);font-size:18px;font-weight:600;color:var(--card)}
+.lb-meta{white-space:nowrap;color:var(--muted);font-size:12.5px}
+.meter{height:6px;border-radius:99px;background:color-mix(in srgb,var(--card) 16%,var(--surface-2));overflow:hidden}
 .meter span{display:block;height:100%;width:0;background:var(--card);border-radius:99px}
-.limit-card.full .limit-left{color:var(--warn)}
-.limit-card.full .meter span{background:var(--warn)}
-.limit-card .legend b{color:var(--ink);font-weight:600}
+.limit-bar.full .lb-left b{color:var(--warn)}
+.limit-bar.full .meter span{background:var(--warn)}
 .limit-set{display:grid;gap:10px;padding-top:14px;border-top:1px solid var(--grid)}
 .limit-h{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center}
 .limit-row{display:flex;gap:10px;align-items:end;flex-wrap:wrap}

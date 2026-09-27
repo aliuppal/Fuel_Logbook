@@ -285,12 +285,11 @@ function renderLimit(C){
   const mk = monthKey(todayIso()), m = +mk.slice(5);
   const u = cardMonth(C.list, mk, priceSeries(C.list));
   const pct = Math.min(100, u.used / u.limit * 100);
-  $("lcMonth").textContent = MONL[m-1];
-  $("lcReset").textContent = "Resets 1 " + MON[m % 12];
   $("lcLeft").textContent = showLimit(u.left);
   $("lcBar").style.width = pct + "%";
+  $("lcMeter").setAttribute("aria-valuenow", Math.round(pct));
   box.classList.toggle("full", u.left <= 0);
-  $("lcUsed").innerHTML = `<span><b>${showLimit(u.used)}</b> of ${showLimit(u.limit)}</span><span>${fmt(pct, 0)}%</span>`;
+  $("lcUsed").textContent = showLimit(u.used) + " / " + showLimit(u.limit) + " · resets 1 " + MON[m % 12];
 }
 
 /* ---------- fuel prices & forecast ---------- */

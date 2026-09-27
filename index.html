@@ -97,11 +97,11 @@
       <button class="btn" type="button" id="todoGo">Review in log</button>
     </div>
 
-    <div class="limit-card dash" id="limitCard" hidden>
-      <div class="limit-top"><span class="lbl">Fuel card · <span id="lcMonth"></span></span><span class="fc-range" id="lcReset"></span></div>
-      <div class="limit-main"><span class="limit-left" id="lcLeft"></span><span class="muted">left</span></div>
-      <div class="meter" aria-hidden="true"><span id="lcBar"></span></div>
-      <div class="legend" id="lcUsed"></div>
+    <div class="limit-bar dash" id="limitCard" hidden>
+      <span class="lb-name"><i class="dot" style="background:var(--card)"></i>Fuel card</span>
+      <div class="meter" role="progressbar" aria-label="Fuel card limit used" aria-valuemin="0" aria-valuemax="100" id="lcMeter"><span id="lcBar"></span></div>
+      <span class="lb-left"><b id="lcLeft"></b> left</span>
+      <span class="lb-meta" id="lcUsed"></span>
     </div>
 
     <div class="hero dash">
