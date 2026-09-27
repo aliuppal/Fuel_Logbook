@@ -274,3 +274,8 @@ img{max-width:100%}
   .caltitle{min-width:118px;font-size:18px}
 }
 .menu-who .since{font-size:12px;margin-top:2px}
+.menu-hint{margin:0;padding:8px 10px;font-size:12.5px;color:var(--muted);line-height:1.4}
+
+/* ---------- installed app ---------- */
+body{-webkit-tap-highlight-color:transparent;overscroll-behavior-y:none}
+@media (display-mode: standalone){ .bar{padding-top:env(safe-area-inset-top,0px);top:0} }

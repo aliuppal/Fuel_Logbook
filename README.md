@@ -84,4 +84,23 @@ js/cloud.js                Supabase client, Google sign-in, table access
 js/config.js               Supabase URL and anon key
 supabase/migrations/       Table definitions and row-level security
 supabase/seed_my_data.sql  One-time import of the owner's existing data
+manifest.webmanifest       App name, colors and icons for installing on a phone
+sw.js                      Service worker: offline support for the installed app
+icons/                     App icons (SVG source and PNG sizes)
+vercel.json                Serves sw.js uncached so updates reach installed apps
 ```
+
+## Install on your phone
+
+Fuel Logbook is an installable web app (PWA): it gets its own home-screen icon, opens full screen
+without the browser bar, and shows your last loaded log when you're offline (changes need a
+connection).
+
+- **Android (Chrome):** open https://fuel-logbook.vercel.app → account menu → **Install app on
+  this device**, or ⋮ menu → **Install app**. Long-press the icon for an **Add fill-up** shortcut.
+- **iPhone (Safari):** open the site → **Share** → **Add to Home Screen**.
+- **Desktop (Chrome/Edge):** the install icon in the address bar, or the account menu.
+
+`manifest.webmanifest` holds the app name, colors and icons (`icons/`), and `sw.js` is the
+service worker that caches the app for offline use. Bump `CACHE` in `sw.js` when you rename or
+remove app files.

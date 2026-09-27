@@ -409,7 +409,8 @@ function toast(msg, undo){
 $("toastUndo").addEventListener("click", () => { const f = undoFn; $("toast").hidden = true; undoFn = null; if (f) f(); });
 
 /* ---------- storage (Supabase) ---------- */
-function upsertLocal(row){ const i = entries.findIndex(e => e.id === row.id); if (i >= 0) entries[i] = row; else entries.push(row); render(); }
+function upsertLocal(row){ const i = entries.findIndex(e => e.id === row.id); if (i >= 0) entries[i] = row; else entries.push(row); render(); keepOffline(); }
+const keepOffline = () => { if (currentUser) saveOffline(currentUser); };
 // Adds when id is null; re-creates a deleted entry when restoring (undo).
 async function writeEntry(id, body, restoring){
   const row = id && !restoring ? await store.updateEntry(id, body) : await store.addEntry(body, id);
@@ -418,17 +419,17 @@ async function writeEntry(id, body, restoring){
 async function patchEntry(id, patch){
   const e = entries.find(x => x.id === id); if (!e) return;
   await store.setPayer(id, patch.payer);
-  Object.assign(e, patch); render();
+  Object.assign(e, patch); render(); keepOffline();
 }
 async function removeEntry(id){
   await store.deleteEntry(id);
-  entries = entries.filter(e => e.id !== id); render();
+  entries = entries.filter(e => e.id !== id); render(); keepOffline();
 }
 let settingsTimer = null;
 function saveSettings(){
   clearTimeout(settingsTimer);
   settingsTimer = setTimeout(async () => {
-    try{ await store.saveSettings(settings); }catch(e){ toast("Couldn't save settings. Try again."); }
+    try{ await store.saveSettings(settings); keepOffline(); }catch(e){ toast("Couldn't save settings. Try again."); }
   }, 500);
 }
 const bodyOf = e => ({date:e.date, odo:e.odo, liters:e.liters ?? null, paid:e.paid ?? null, payer:e.payer || "self", partial:!!e.partial, note:e.note || ""});
@@ -592,33 +593,77 @@ function toggleMenu(open){ $("accountMenu").hidden = !open; $("accountBtn").setA
 $("accountBtn").addEventListener("click", ev => { ev.stopPropagation(); toggleMenu($("accountMenu").hidden); });
 document.addEventListener("click", ev => { if (!ev.target.closest(".account")) toggleMenu(false); });
 document.addEventListener("keydown", ev => { if (ev.key === "Escape") toggleMenu(false); });
-$("signOutBtn").addEventListener("click", async () => { toggleMenu(false); await signOut(); });
+$("signOutBtn").addEventListener("click", async () => { toggleMenu(false); clearOffline(); await signOut(); });
 $("welcomeAdd").addEventListener("click", () => openSheet());
+
+/* ---------- offline copy ---------- */
+// The last loaded log is kept on the device so the installed app can show it
+// without a connection. Changes still need a connection to save.
+const CACHE_KEY = "fuel-offline-v1";
+function saveOffline(user){
+  try{ localStorage.setItem(CACHE_KEY, JSON.stringify({user: {id: user.id, email: user.email, user_metadata: user.user_metadata}, entries, settings, at: Date.now()})); }catch(e){}
+}
+function readOffline(userId){
+  try{ const c = JSON.parse(localStorage.getItem(CACHE_KEY) || "null"); return c && (!userId || c.user.id === userId) ? c : null; }catch(e){ return null; }
+}
+function clearOffline(){ try{ localStorage.removeItem(CACHE_KEY); }catch(e){} }
+function showOffline(c){
+  entries = c.entries || []; Object.assign(settings, c.settings || {});
+  loaded = true; render();
+  const d = new Date(c.at);
+  status("You're offline. Showing your log as of " + d.getDate() + " " + MON[d.getMonth()] + ", " + d.toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"}) + ". Changes need a connection.");
+}
+window.addEventListener("online", () => { if (currentUserId && store) reloadLog(); else if (currentUserId) location.reload(); });
+
+/* ---------- install ---------- */
+let installPrompt = null;
+window.addEventListener("beforeinstallprompt", ev => { ev.preventDefault(); installPrompt = ev; $("installBtn").hidden = false; });
+window.addEventListener("appinstalled", () => { installPrompt = null; $("installBtn").hidden = true; toast("Fuel Logbook installed"); });
+$("installBtn").addEventListener("click", async () => {
+  toggleMenu(false);
+  if (!installPrompt) return;
+  installPrompt.prompt();
+  await installPrompt.userChoice.catch(() => {});
+  installPrompt = null; $("installBtn").hidden = true;
+});
+const isStandalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+$("iosHint").hidden = !(isIOS && !isStandalone);
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
 
 /* ---------- init ---------- */
 fillCurrencySelect();
-let currentUserId = null;
-async function enterApp(user){
-  if (currentUserId === user.id) return;
-  currentUserId = user.id;
-  renderAccount(user);
-  showScreen("app");
-  loaded = false; entries = []; render();
+let currentUserId = null, currentUser = null;
+async function reloadLog(){
   try{
-    store = await openStore(user);
-    // The profile isn't needed to use the log, so a missing one never blocks loading.
-    store.touchProfile().then(showProfile, () => {});
     const [rows, saved] = await Promise.all([store.listEntries(), store.getSettings()]);
     entries = rows;
     if (saved) Object.assign(settings, saved);
     loaded = true; status(""); render();
+    saveOffline(currentUser);
+    return true;
   }catch(e){
-    loaded = true; render();
-    status("Couldn't load your log. Check your connection and reload the page.");
+    const c = readOffline(currentUserId);
+    if (c) showOffline(c);
+    else { loaded = true; render(); status("Couldn't load your log. Check your connection and reload the page."); }
+    return false;
   }
 }
+async function enterApp(user){
+  if (currentUserId === user.id) return;
+  currentUserId = user.id; currentUser = user;
+  renderAccount(user);
+  showScreen("app");
+  loaded = false; entries = []; render();
+  store = await openStore(user);
+  // The profile isn't needed to use the log, so a missing one never blocks loading.
+  store.touchProfile().then(showProfile, () => {});
+  await reloadLog();
+  // Home-screen shortcut "Add fill-up" opens the app at #add.
+  if (location.hash === "#add"){ history.replaceState(null, "", location.pathname); openSheet(); }
+}
 function leaveApp(){
-  currentUserId = null; store = null; entries = []; loaded = false;
+  currentUserId = null; currentUser = null; store = null; entries = []; loaded = false;
   $("accountSince").hidden = true;
   settings = {currency:"PKR", gallon:"US", odoUnit:"km"};
   if (sheet.open) closeSheet();
@@ -642,6 +687,9 @@ async function start(){
     if (user) await enterApp(user); else { leaveApp(); if (oauthError) showSigninError("Sign-in didn't finish: " + oauthError); }
     await onAuthChange((event, u) => { if (u) enterApp(u); else if (event === "SIGNED_OUT") leaveApp(); });
   }catch(e){
+    // Offline launch of the installed app: show the last saved log.
+    const c = readOffline();
+    if (c){ currentUserId = c.user.id; currentUser = c.user; renderAccount(c.user); showScreen("app"); showOffline(c); return; }
     leaveApp();
     showSigninError("Couldn't reach the server. Check your connection and reload the page.");
   }
