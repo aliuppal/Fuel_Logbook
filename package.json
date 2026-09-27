@@ -1,0 +1,10 @@
+{
+  "name": "fuel-logbook",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Car fuel average and spending tracker with Google sign-in and Supabase.",
+  "type": "module",
+  "scripts": {
+    "start": "npx --yes http-server . -p 8081 -c-1"
+  }
+}

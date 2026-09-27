@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Fuel Logbook</title>
+<meta name="description" content="Track your car's fuel average in km or miles, liters or gallons, and what you pay by fuel card or yourself.">
+<meta name="theme-color" content="#C8680A">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 34 34'%3E%3Crect width='34' height='34' rx='9' fill='%23C8680A'/%3E%3Cpath d='M11 25V10a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v15M9.5 25h13M13 12h6v4h-6zM21 15l3 2.5v5a1.3 1.3 0 0 0 2.6 0V13l-2.4-2.4' fill='none' stroke='%231B0F02' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- Shown until we know whether someone is signed in -->
+<div class="splash" id="splash" role="status"><span class="spinner" aria-hidden="true"></span><span>Loading…</span></div>
+
+<!-- SIGN IN -->
+<section class="signin" id="signin" hidden>
+  <div class="signin-card">
+    <svg width="56" height="56" viewBox="0 0 34 34" aria-hidden="true"><rect width="34" height="34" rx="9" style="fill:var(--accent)"/><path d="M11 25V10a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v15M9.5 25h13M13 12h6v4h-6zM21 15l3 2.5v5a1.3 1.3 0 0 0 2.6 0V13l-2.4-2.4" fill="none" stroke="#1B0F02" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <h1>Fuel Logbook</h1>
+    <p class="lead">Log every fill-up and see your car's fuel average in km/L or mpg, and what you pay by fuel card or out of pocket, by week and month.</p>
+    <ul class="perks">
+      <li>Current, monthly and overall fuel average</li>
+      <li>Switch between kilometers and miles, liters and gallons</li>
+      <li>Fuel card and personal spending tracked separately</li>
+    </ul>
+    <button class="gbtn" type="button" id="googleSignIn">
+      <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg>
+      Continue with Google
+    </button>
+    <p class="signin-err" id="signinErr" role="alert" hidden></p>
+    <p class="fine">Your log is private to your Google account.</p>
+  </div>
+</section>
+
+<div id="app" hidden>
+<header class="bar">
+  <div class="bar-in">
+    <div class="brand">
+      <svg width="34" height="34" viewBox="0 0 34 34" aria-hidden="true"><rect width="34" height="34" rx="9" style="fill:var(--accent)"/><path d="M11 25V10a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v15M9.5 25h13M13 12h6v4h-6zM21 15l3 2.5v5a1.3 1.3 0 0 0 2.6 0V13l-2.4-2.4" fill="none" stroke="#1B0F02" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <div><h1>Fuel Logbook</h1><p id="sub">Loading…</p></div>
+    </div>
+    <div class="bar-tools">
+      <div class="seg" role="group" aria-label="Distance unit"><button type="button" data-dist="km">km</button><button type="button" data-dist="mi">miles</button></div>
+      <div class="seg" role="group" aria-label="Fuel unit"><button type="button" data-vol="L">liters</button><button type="button" data-vol="gal">gallons</button></div>
+      <button class="btn accent" type="button" id="addTop"><span aria-hidden="true">＋</span> Add fill-up</button>
+      <div class="account">
+        <button class="avatar" type="button" id="accountBtn" aria-haspopup="true" aria-expanded="false" aria-label="Account"></button>
+        <div class="menu" id="accountMenu" hidden>
+          <div class="menu-who"><strong id="accountName"></strong><span id="accountEmail"></span></div>
+          <button class="menu-item" type="button" id="signOutBtn">Sign out</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <nav class="tabs" role="tablist" aria-label="Sections">
+    <button role="tab" data-tab="overview">Overview</button>
+    <button role="tab" data-tab="log">Log<span class="count" id="tabCount" hidden></span></button>
+    <button role="tab" data-tab="reports">Reports</button>
+    <button role="tab" data-tab="settings">Settings</button>
+  </nav>
+</header>
+
+<main class="wrap">
+  <div id="status" class="status" hidden></div>
+
+  <!-- OVERVIEW -->
+  <section class="view" data-view="overview">
+    <div class="welcome" id="welcome" hidden>
+      <h2 id="welcomeTitle">Welcome</h2>
+      <p>Add your first fill-up to start your log. Each time you fill up, enter the odometer reading and the fuel you added. Your average appears after two full tanks.</p>
+      <ol>
+        <li><strong>Fill the tank to full</strong> and note the odometer.</li>
+        <li><strong>Next fill-up:</strong> enter the new reading and how much fuel it took.</li>
+        <li>Mark whether you paid with your <strong>fuel card</strong> or yourself.</li>
+      </ol>
+      <button class="btn accent" type="button" id="welcomeAdd"><span aria-hidden="true">＋</span> Add first fill-up</button>
+    </div>
+
+    <div class="todo" id="todo" hidden>
+      <p id="todoText"></p>
+      <button class="btn" type="button" id="todoGo">Review in log</button>
+    </div>
+
+    <div class="hero dash">
+      <div class="gaugecard">
+        <span class="lbl">Current average</span>
+        <div class="gaugewrap">
+          <svg id="gauge" viewBox="0 0 280 160" aria-hidden="true"></svg>
+          <div class="readout"><span class="big" id="gCur">–</span><span class="unit eu"></span></div>
+        </div>
+        <span class="delta" id="gDelta" hidden></span>
+        <span class="gaugemeta" id="gCurMeta"></span>
+      </div>
+      <div class="stats">
+        <div class="stat"><span class="lbl" id="sMonLbl">This month</span><span class="v" id="sMon">–</span><span class="s" id="sMonS"></span></div>
+        <div class="stat"><span class="lbl">Overall average</span><span class="v" id="sAll">–</span><span class="s" id="sAllS"></span></div>
+        <div class="stat"><span class="lbl" id="sCpdLbl">Cost per km</span><span class="v" id="sCpd">–</span><span class="s" id="sCpdS"></span></div>
+        <div class="stat"><span class="lbl">Distance tracked</span><span class="v" id="sDist">–</span><span class="s" id="sDistS"></span></div>
+      </div>
+    </div>
+
+    <div class="panel dash">
+      <div class="panel-head">
+        <h2>Fuel spending</h2>
+        <div class="legend"><span><i class="dot" style="background:var(--card)"></i>Fuel card</span><span><i class="dot" style="background:var(--me)"></i>Paid by me</span></div>
+      </div>
+      <div class="spendgrid" id="spendgrid"></div>
+    </div>
+
+    <div class="panel dash">
+      <div class="panel-head"><h2>Average per fill-up</h2><span class="legend" id="chartMeta"></span></div>
+      <div class="chart" id="chart"></div>
+    </div>
+
+    <div class="panel dash">
+      <div class="panel-head"><h2>Recent fill-ups</h2><button class="linkbtn" type="button" data-goto="log">See full log →</button></div>
+      <div class="list" id="recent"></div>
+    </div>
+  </section>
+
+  <!-- LOG -->
+  <section class="view" data-view="log" hidden>
+    <div class="panel">
+      <div class="panel-head">
+        <h2>Log</h2>
+        <div class="filters" role="group" aria-label="Filter">
+          <button class="fchip" data-f="all">All</button>
+          <button class="fchip" data-f="card">Fuel card</button>
+          <button class="fchip" data-f="self">Me</button>
+          <button class="fchip" data-f="noprice">Needs price</button>
+        </div>
+      </div>
+      <p class="muted" style="margin:0;font-size:13px">Tap the <b>Fuel card / Me</b> tag to switch who paid. Tap a price to change it.</p>
+      <div id="log"></div>
+    </div>
+  </section>
+
+  <!-- REPORTS -->
+  <section class="view" data-view="reports" hidden>
+    <div class="panel">
+      <div class="panel-head"><h2>Spending by month</h2><div class="legend"><span><i class="dot" style="background:var(--card)"></i>Fuel card</span><span><i class="dot" style="background:var(--me)"></i>Me</span></div></div>
+      <div class="chart" id="spendChart"></div>
+    </div>
+    <div class="panel">
+      <div class="panel-head">
+        <h2>Breakdown</h2>
+        <div class="seg" role="group" aria-label="Group by"><button type="button" data-per="week">Weekly</button><button type="button" data-per="month">Monthly</button></div>
+      </div>
+      <div class="tablewrap"><table id="brk"></table></div>
+    </div>
+  </section>
+
+  <!-- SETTINGS -->
+  <section class="view" data-view="settings" hidden>
+    <div class="panel">
+      <h2>Settings</h2>
+      <div class="settings">
+        <label>Currency symbol<input type="text" id="sCur" maxlength="4"></label>
+        <label>Gallon type<select id="sGal"><option value="US">US gallon (3.785 L)</option><option value="UK">UK gallon (4.546 L)</option></select></label>
+        <label>My odometer reads in<select id="sOdo"><option value="km">Kilometers</option><option value="mi">Miles</option></select></label>
+      </div>
+      <p class="muted" style="margin:0;font-size:13px">Averages use the full-tank method: distance since the previous full fill-up ÷ fuel added. Partial fills are added to the next full one. Entries without fuel are saved as odometer readings.</p>
+    </div>
+  </section>
+</main>
+
+<button class="fab" type="button" id="fab">＋ Add fill-up</button>
+</div>
+
+<dialog id="sheet" aria-labelledby="sheetTitle">
+  <form class="sheet" id="form" novalidate>
+    <div class="sheet-h">
+      <h2 id="sheetTitle">Add fill-up</h2>
+      <button class="iconbtn" type="button" id="sheetClose" aria-label="Close"><svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><path d="M4 4l10 10M14 4L4 14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
+    </div>
+    <div class="row2">
+      <label>Date<input type="date" id="fDate" required></label>
+      <label><span id="fOdoLbl">Odometer (km)</span><input type="number" id="fOdo" inputmode="numeric" min="0" step="1" required></label>
+    </div>
+    <div class="preview" id="preview">Enter the odometer reading to see the distance since your last fill-up.</div>
+    <div class="row2">
+      <label><span id="fVolLbl">Fuel (L)</span><input type="number" id="fVol" inputmode="decimal" min="0" step="0.01" placeholder="Leave blank for reading only"></label>
+      <label>Total paid<input type="number" id="fPaid" inputmode="decimal" min="0" step="0.01" placeholder="Optional"></label>
+    </div>
+    <label><span id="fPpuLbl">Price per L</span><input type="number" id="fPpu" inputmode="decimal" min="0" step="0.001" placeholder="Fills in from total paid, or type it"></label>
+    <div style="display:grid;gap:6px">
+      <span class="lbl">Paid by</span>
+      <div class="payer" role="group" aria-label="Paid by">
+        <button type="button" data-p="card" aria-pressed="false">Fuel card</button>
+        <button type="button" data-p="self" aria-pressed="true">Me</button>
+      </div>
+    </div>
+    <label class="check"><input type="checkbox" id="fPartial"> I didn't fill the tank to full</label>
+    <label>Note<input type="text" id="fNote" maxlength="200" placeholder="Optional, e.g. station or trip"></label>
+    <p class="formmsg" id="fMsg" hidden></p>
+    <div class="sheet-f">
+      <button class="btn danger" type="button" id="fDelete" hidden>Delete</button>
+      <div class="r">
+        <button class="btn ghost" type="button" id="fCancel">Cancel</button>
+        <button class="btn accent" type="submit" id="fSubmit">Add fill-up</button>
+      </div>
+    </div>
+  </form>
+</dialog>
+
+<div class="toast" id="toast" role="status" hidden><span id="toastText"></span><button type="button" id="toastUndo" hidden>Undo</button></div>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
