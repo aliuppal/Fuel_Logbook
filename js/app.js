@@ -1,4 +1,5 @@
 import { cloudConfigured, getUser, signInWithGoogle, signOut, onAuthChange, openStore } from "./cloud.js";
+import { MARKETS, makesFor, modelsFor, enginesFor } from "./cars.js";
 
 const KM_PER_MI = 1.609344, GAL = {US:3.785411784, UK:4.54609};
 const MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
@@ -94,7 +95,7 @@ const todayIso = () => iso(new Date());
 
 /* ---------- calculations ---------- */
 function compute(){
-  const list = entries.filter(e => e && e.date && isFinite(e.odo)).sort((a,b) => a.odo - b.odo || a.date.localeCompare(b.date));
+  const list = entries.filter(e => e && e.date && isFinite(e.odo) && onCar(e)).sort((a,b) => a.odo - b.odo || a.date.localeCompare(b.date));
   const segs = [], segById = {}, prevById = {};
   let anchor = null, pend = 0, prev = null;
   for (const e of list){
@@ -144,6 +145,8 @@ function render(){
   $("todo").hidden = !loaded || !unpriced.length;
   $("todoText").innerHTML = `<strong>${unpriced.length} fill-up${unpriced.length>1?"s":""} ${unpriced.length>1?"have":"has"} no price.</strong> Add what you paid and mark fuel card or me to see your spending.`;
 
+  renderCars(C);
+  if (ui.tab === "settings") renderProfile();
   if (ui.tab === "overview") renderOverview(C, fills);
   if (ui.tab === "log") renderLog(C);
   renderServiceBadges(C);
@@ -276,7 +279,7 @@ const limitValue = () => limitType() === "amount" ? (settings.cardAmount || 0) :
 const hasLimit = () => limitValue() > 0;
 const showLimit = v => limitType() === "amount" ? money(v, 0) : fmt(vOut(v), 1) + " " + vU();
 function cardMonth(list, mk, series, exceptId){
-  const fills = list.filter(e => monthKey(e.date) === mk && e.liters > 0 && isCard(e) && e.id !== exceptId);
+  const fills = entries.filter(e => monthKey(e.date) === mk && e.liters > 0 && isCard(e) && e.id !== exceptId);
   const liters = sum(fills, e => e.liters);
   const amount = sum(fills, e => e.paid > 0 ? e.paid : e.liters * (priceOn(series, e.date) || 0));
   const used = limitType() === "amount" ? amount : liters, limit = limitValue();
@@ -573,7 +576,7 @@ $("calToday").addEventListener("click", () => { calMonth = monthKey(todayIso());
 // rules is null until loaded, or when the maintenance tables don't exist yet.
 let rules = null, svcLog = [], editingRuleId = null, doneRuleId = null;
 const SERVICE_PRESETS = [
-  ["Oil change", 5000, 6], ["Oil filter", 10000, 12], ["Air filter", 15000, 12], ["Tyre rotation", 10000, null],
+  ["Oil change", 5000, 6], ["Tuning", 10000, 12], ["AC service", null, 12], ["Oil filter", 10000, 12], ["Air filter", 15000, 12], ["Tyre rotation", 10000, null],
   ["Brake check", 20000, 12], ["Coolant", 40000, 24], ["Spark plugs", 30000, null], ["Battery check", null, 12],
 ];
 const kmFromDist = v => ui.dist === "km" ? v : v * KM_PER_MI;              // interval typed in km or miles
@@ -609,7 +612,7 @@ function serviceStatuses(C){
   if (!rules || !C.list.length) return [];
   const rates = drivingRates(C);
   const rank = {overdue: 0, soon: 1, ok: 2};
-  return rules.map(rule => ({rule, s: ruleStatus(rule, C, rates)}))
+  return carRules().map(rule => ({rule, s: ruleStatus(rule, C, rates)}))
     .sort((a, b) => rank[a.s.state] - rank[b.s.state] || a.s.nextDay - b.s.nextDay);
 }
 const STATE_TEXT = {overdue: "Overdue", soon: "Due soon", ok: "OK"};
@@ -617,8 +620,8 @@ const STATE_TEXT = {overdue: "Overdue", soon: "Due soon", ok: "OK"};
 // history has no entry for it (reminders saved before history was kept).
 function serviceEvents(){
   if (!rules) return [];
-  const ev = svcLog.slice();
-  rules.forEach(r => { if (!svcLog.some(x => x.ruleId === r.id && x.date === r.lastDate)) ev.push({name: r.name, ruleId: r.id, date: r.lastDate, odo: r.lastKm, cost: null, note: ""}); });
+  const ev = carLog();
+  carRules().forEach(r => { if (!svcLog.some(x => x.ruleId === r.id && x.date === r.lastDate)) ev.push({name: r.name, ruleId: r.id, date: r.lastDate, odo: r.lastKm, cost: null, note: ""}); });
   return ev;
 }
 const logsFor = rule => svcLog.filter(x => x.ruleId === rule.id).sort((a, b) => b.date.localeCompare(a.date));
@@ -647,7 +650,8 @@ function renderServiceBadges(C){
 function renderService(C){
   const ready = rules !== null;
   $("ruleAdd").disabled = !ready;
-  $("svcHistoryPanel").hidden = !ready || !svcLog.length;
+  const history = carLog();
+  $("svcHistoryPanel").hidden = !ready || !history.length;
   const latest = C.list[C.list.length - 1];
   $("svcNow").innerHTML = latest ? `<span>Latest reading <b>${fmt(dOut(latest.odo), 0)} ${dU()}</b> · ${longDate(latest.date)}</span>` : "";
   if (!ready){
@@ -655,7 +659,7 @@ function renderService(C){
     return;
   }
   const list = serviceStatuses(C);
-  $("svcList").innerHTML = !rules.length
+  $("svcList").innerHTML = !carRules().length
     ? `<div class="svc-empty"><p>Add a reminder for things like oil changes, and the app works out when each one is due from your odometer.</p>
         <div class="presets">${SERVICE_PRESETS.slice(0, 4).map((p, i) => `<button type="button" class="fchip" data-preset-new="${i}">${esc(p[0])}</button>`).join("")}</div></div>`
     : list.map(({rule, s}) => {
@@ -674,11 +678,11 @@ function renderService(C){
       </div>`;
     }).join("");
 
-  const total = sum(svcLog, x => x.cost || 0);
-  $("svcHistMeta").innerHTML = svcLog.length ? `<span><b>${svcLog.length}</b> services</span>` + (total ? `<span><b>${money(total, 0)}</b> spent</span>` : "") : "";
-  $("svcHistory").innerHTML = svcLog.length
+  const total = sum(history, x => x.cost || 0);
+  $("svcHistMeta").innerHTML = history.length ? `<span><b>${history.length}</b> services</span>` + (total ? `<span><b>${money(total, 0)}</b> spent</span>` : "") : "";
+  $("svcHistory").innerHTML = history.length
     ? `<thead><tr><th>Date</th><th>Service</th><th class="num">Odometer</th><th class="num">Cost</th><th>Note</th><th></th></tr></thead><tbody>` +
-      svcLog.map(x => `<tr><td>${longDate(x.date)}</td><td>${esc(x.name)}</td><td class="num">${fmt(dOut(x.odo), 0)} ${dU()}</td>
+      history.map(x => `<tr><td>${longDate(x.date)}</td><td>${esc(x.name)}</td><td class="num">${fmt(dOut(x.odo), 0)} ${dU()}</td>
         <td class="num">${x.cost != null ? money(x.cost) : "–"}</td><td class="muted">${esc(x.note)}</td>
         <td><button class="rowbtn" type="button" data-svc-del="${esc(x.id)}">Delete</button></td></tr>`).join("") + "</tbody>"
     : "";
@@ -743,6 +747,7 @@ $("ruleForm").addEventListener("submit", async ev => {
   const wasEdit = !!editingRuleId;
   $("rSubmit").disabled = true;
   try{
+    if (!editingRuleId){ await ensureCar(); if (carsOn()) rule.carId = activeCarId; }
     const saved = await store.saveServiceRule(rule, editingRuleId);
     const i = rules.findIndex(x => x.id === saved.id);
     if (i >= 0) rules[i] = saved; else rules.push(saved);
@@ -919,6 +924,7 @@ function upsertLocal(row){ const i = entries.findIndex(e => e.id === row.id); if
 const keepOffline = () => { if (currentUser) saveOffline(currentUser); };
 // Adds when id is null; re-creates a deleted entry when restoring (undo).
 async function writeEntry(id, body, restoring){
+  if (!id){ await ensureCar(); if (carsOn()) body = {...body, carId: activeCarId}; }
   const row = id && !restoring ? await store.updateEntry(id, body) : await store.addEntry(body, id);
   upsertLocal(row);
 }
@@ -938,7 +944,7 @@ function saveSettings(){
     try{ await store.saveSettings(settings); keepOffline(); }catch(e){ toast("Couldn't save settings. Try again."); }
   }, 500);
 }
-const bodyOf = e => ({date:e.date, odo:e.odo, liters:e.liters ?? null, paid:e.paid ?? null, payer:e.payer || "self", partial:!!e.partial, note:e.note || ""});
+const bodyOf = e => ({date:e.date, odo:e.odo, liters:e.liters ?? null, paid:e.paid ?? null, payer:e.payer || "self", partial:!!e.partial, note:e.note || "", carId:e.carId || null});
 
 /* ---------- sheet ---------- */
 const sheet = $("sheet");
@@ -1101,6 +1107,357 @@ $("sLimitClear").addEventListener("click", () => {
 let rz = null;
 window.addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(render, 150); });
 
+/* ---------- cars ---------- */
+// cars is null until loaded, or when the cars table doesn't exist yet (then the app
+// shows everything as one car). Each car has its own dashboard; the fuel card limit
+// stays per person and covers all cars.
+let cars = null, activeCarId = null, profile = null;
+const MPG_TO_KMPL = 0.425144;
+const carsOn = () => Array.isArray(cars) && cars.length > 0;
+function onCar(x){ return !carsOn() || x.carId === activeCarId || (!x.carId && activeCarId === cars[0].id); }
+const activeCar = () => carsOn() ? cars.find(c => c.id === activeCarId) || null : null;
+const carRules = () => (rules || []).filter(onCar);
+const carLog = () => svcLog.filter(onCar);
+function carLabel(c){
+  if (!c) return "";
+  const base = [c.year, c.make, c.model].filter(Boolean).join(" ");
+  return c.nickname ? c.nickname + (base ? " · " + base : "") : base || "My car";
+}
+const carKey = () => "fuel-car:" + (currentUserId || "");
+// A US car reads in miles and US gallons (mpg); a Pakistan car in km and liters.
+function applyCarUnits(c){
+  if (!c) return;
+  if (c.market === "US"){ ui.dist = "mi"; ui.vol = "gal"; settings.gallon = "US"; }
+  else if (c.market === "PK"){ ui.dist = "km"; ui.vol = "L"; }
+  saveUi();
+}
+function setActiveCar(id, withUnits){
+  activeCarId = id;
+  try{ localStorage.setItem(carKey(), id); }catch(e){}
+  if (withUnits) applyCarUnits(activeCar());
+  calSel = null;
+  if (editingId && sheet.open) closeSheet();
+  render();
+}
+function pickActiveCar(){
+  if (!carsOn()){ activeCarId = null; return; }
+  let saved = null;
+  try{ saved = localStorage.getItem(carKey()); }catch(e){}
+  activeCarId = cars.some(c => c.id === saved) ? saved : cars[0].id;
+}
+// The first fill-up or reminder of a brand-new account gets a car to belong to.
+async function ensureCar(){
+  if (!Array.isArray(cars) || cars.length) return;
+  const c = await store.saveCar({nickname: "My car", market: regionMarket()});
+  cars.push(c); activeCarId = c.id;
+  try{ localStorage.setItem(carKey(), c.id); }catch(e){}
+}
+
+function renderCars(C){
+  $("carPick").hidden = !carsOn();
+  if (carsOn()){
+    $("carSel").innerHTML = cars.map(c => `<option value="${esc(c.id)}">${esc(carLabel(c))}</option>`).join("") +
+      `<option value="__add">＋ Add a car…</option>`;
+    $("carSel").value = activeCarId;
+  }
+  $("welcomeCar").hidden = !(Array.isArray(cars) && !cars.length);
+  $("carsPanel").hidden = cars === null;
+
+  // Overview: the car's typical average next to what you're getting.
+  const c = activeCar(), box = $("carCard");
+  box.hidden = !c;
+  if (c){
+    const cur = C.segs[C.segs.length - 1], curE = cur ? econ(cur.dist, cur.lit) : null;
+    const typ = c.ratedKmpl ? econ(c.ratedKmpl, 1) : null;
+    $("ccName").textContent = c.nickname || [c.make, c.model].filter(Boolean).join(" ") || "My car";
+    $("ccSpec").textContent = [c.nickname ? [c.make, c.model].filter(Boolean).join(" ") : "", c.year, c.engine, MARKETS[c.market], c.plate].filter(Boolean).join(" · ") || "Add the make, model and engine";
+    $("ccTypical").textContent = typ != null ? fmt(typ) : "–";
+    $("ccCurrent").textContent = fmt(curE);
+    $("ccOverall").textContent = fmt(C.overall.e);
+    const cmp = $("ccCmp");
+    if (typ && curE){
+      const pct = (curE / typ - 1) * 100;
+      cmp.textContent = Math.abs(pct) < 0.5 ? "Same as car average" : (pct > 0 ? "▲ " : "▼ ") + fmt(Math.abs(pct), 0) + "% vs car average";
+      cmp.className = "cc-cmp " + (pct >= 0.5 ? "good" : pct <= -0.5 ? "poor" : "");
+    } else { cmp.textContent = typ ? "" : "Set the car average in Edit car"; cmp.className = "cc-cmp"; }
+    $("ccVin").hidden = !c.vinData;
+  }
+
+  // Settings: the list of cars.
+  if (cars !== null){
+    const counts = {};
+    entries.forEach(e => { const k = e.carId || (cars[0] && cars[0].id); counts[k] = (counts[k] || 0) + 1; });
+    $("carList").innerHTML = !cars.length
+      ? `<div class="svc-empty"><p>Add your car to get its own dashboard, log and service reminders. Add more cars any time; each one keeps its own fill-ups.</p></div>`
+      : cars.map(x => `<div class="car-row${x.id === activeCarId ? " active" : ""}">
+          <div class="car-row-id"><b>${esc(carLabel(x))}</b><span class="muted">${esc([x.engine, MARKETS[x.market], x.plate, x.vin].filter(Boolean).join(" · ") || "No details yet")}</span></div>
+          <span class="car-row-avg">${x.ratedKmpl ? `<b>${fmt(econ(x.ratedKmpl, 1))}</b> ${econUnit()}` : ""}</span>
+          <span class="muted car-row-n">${counts[x.id] || 0} entries</span>
+          <div class="car-row-act">
+            ${x.id === activeCarId ? `<span class="pill ok">Showing</span>` : `<button class="btn ghost" type="button" data-car-open="${esc(x.id)}">Show</button>`}
+            ${x.vinData ? `<button class="btn ghost" type="button" data-car-vin="${esc(x.id)}">VIN Data</button>` : ""}
+            <button class="btn ghost" type="button" data-car-edit="${esc(x.id)}">Edit</button>
+          </div>
+        </div>`).join("");
+  }
+}
+$("carSel").addEventListener("change", () => {
+  const v = $("carSel").value;
+  if (v === "__add"){ $("carSel").value = activeCarId; openCar(); return; }
+  setActiveCar(v, true);
+  toast("Showing " + carLabel(activeCar()));
+});
+$("carList").addEventListener("click", ev => {
+  const o = ev.target.closest("[data-car-open]"), e = ev.target.closest("[data-car-edit]"), v = ev.target.closest("[data-car-vin]");
+  if (o){ setActiveCar(o.dataset.carOpen, true); ui.tab = "overview"; saveUi(); render(); scrollTo(0, 0); }
+  else if (e) openCar(e.dataset.carEdit);
+  else if (v) openVin({mode: "car", carId: v.dataset.carVin});
+});
+$("carAdd").addEventListener("click", () => openCar());
+$("welcomeCar").addEventListener("click", () => openCar());
+$("ccEdit").addEventListener("click", () => openCar(activeCarId));
+$("ccVin").addEventListener("click", () => openVin({mode: "car", carId: activeCarId}));
+
+/* add / edit car */
+const carSheet = $("carSheet"), vinSheet = $("vinSheet");
+[carSheet, vinSheet].forEach(d => d.addEventListener("click", ev => { if (ev.target === d) closeDialog(d); }));
+let carMarket = "PK", editingCarId = null, carVin = "", carVinData = null, avgTouched = false, carDelArmed = false;
+const OTHER = "__other";
+const avgOut = kmpl => carMarket === "US" ? kmpl / MPG_TO_KMPL : kmpl;   // the form shows mpg for US cars
+const avgIn = v => carMarket === "US" ? v * MPG_TO_KMPL : v;
+function fillSelect(id, values, current){
+  const el = $(id);
+  el.innerHTML = `<option value="">Choose…</option>` + values.map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join("") + `<option value="${OTHER}">Other…</option>`;
+  el.value = current && values.includes(current) ? current : current ? OTHER : "";
+}
+// Shows the typed field when "Other…" is picked (or for countries without a list).
+function syncCustom(sel, txt){
+  const custom = carMarket === "other" || $(sel).value === OTHER;
+  $(sel).hidden = carMarket === "other"; $(txt).hidden = !custom;
+}
+const pick = (sel, txt) => carMarket === "other" || $(sel).value === OTHER ? $(txt).value.trim() : $(sel).value;
+function refreshCarForm(keep){
+  document.querySelectorAll("[data-market]").forEach(b => b.setAttribute("aria-pressed", b.dataset.market === carMarket));
+  const make = keep ? keep.make : pick("cMake", "cMakeT"), model = keep ? keep.model : pick("cModel", "cModelT"), engine = keep ? keep.engine : pick("cEngine", "cEngineT");
+  fillSelect("cMake", makesFor(carMarket), make);
+  fillSelect("cModel", modelsFor(carMarket, $("cMake").value), model);
+  fillSelect("cEngine", enginesFor(carMarket, $("cMake").value, $("cModel").value).map(x => x.engine), engine);
+  if (keep){ $("cMakeT").value = keep.make || ""; $("cModelT").value = keep.model || ""; $("cEngineT").value = keep.engine || ""; }
+  syncCustom("cMake", "cMakeT"); syncCustom("cModel", "cModelT"); syncCustom("cEngine", "cEngineT");
+  $("cAvgLbl").textContent = "Car average (" + (carMarket === "US" ? "mpg" : "km/L") + ")";
+  $("cAvgHint").textContent = carMarket === "US" ? "EPA combined rating when the engine is picked from the list. Change it if yours differs."
+    : carMarket === "PK" ? "Typical owner average in mixed driving when the engine is picked from the list. Change it if yours differs."
+    : "Enter the average your car is rated for or usually gets.";
+}
+function catalogAvg(){
+  const hit = enginesFor(carMarket, $("cMake").value, $("cModel").value).find(x => x.engine === $("cEngine").value);
+  if (hit && !avgTouched) $("cAvg").value = +avgOut(hit.kmpl).toFixed(1);
+}
+$("carForm").querySelectorAll("[data-market]").forEach(b => b.addEventListener("click", () => {
+  if (carMarket === b.dataset.market) return;
+  const kmpl = parseFloat($("cAvg").value) > 0 ? avgIn(parseFloat($("cAvg").value)) : null;
+  const keep = {make: pick("cMake", "cMakeT"), model: pick("cModel", "cModelT"), engine: pick("cEngine", "cEngineT")};
+  carMarket = b.dataset.market;
+  refreshCarForm(keep);
+  if (kmpl) $("cAvg").value = +avgOut(kmpl).toFixed(1);
+}));
+$("cMake").addEventListener("change", () => { fillSelect("cModel", modelsFor(carMarket, $("cMake").value), ""); fillSelect("cEngine", [], ""); syncCustom("cMake", "cMakeT"); syncCustom("cModel", "cModelT"); syncCustom("cEngine", "cEngineT"); });
+$("cModel").addEventListener("change", () => {
+  const engines = enginesFor(carMarket, $("cMake").value, $("cModel").value).map(x => x.engine);
+  fillSelect("cEngine", engines, engines.length === 1 ? engines[0] : "");
+  syncCustom("cModel", "cModelT"); syncCustom("cEngine", "cEngineT"); catalogAvg();
+});
+$("cEngine").addEventListener("change", () => { syncCustom("cEngine", "cEngineT"); catalogAvg(); });
+$("cAvg").addEventListener("input", () => { avgTouched = true; });
+function showVinNote(){
+  $("cVinNote").hidden = !carVin;
+  $("cVinNote").textContent = carVin ? "VIN " + carVin + (carVinData ? " · details added" : "") : "";
+  $("cVinBtn").textContent = carVin ? "VIN Data ✓" : "VIN Data";
+}
+function openCar(id){
+  editingCarId = id || null; avgTouched = !!id; carDelArmed = false;
+  const c = editingCarId ? cars.find(x => x.id === editingCarId) : null;
+  $("carForm").reset(); $("cMsg").hidden = true; $("cDelete").textContent = "Delete car";
+  carMarket = c ? c.market : regionMarket();
+  carVin = c ? c.vin || "" : ""; carVinData = c ? c.vinData : null;
+  const y = new Date().getFullYear() + 1;
+  $("cYear").innerHTML = `<option value="">Not sure</option>` + Array.from({length: y - 1979}, (_, i) => `<option>${y - i}</option>`).join("");
+  refreshCarForm(c ? {make: c.make, model: c.model, engine: c.engine} : {make: "", model: "", engine: ""});
+  if (c){
+    $("cYear").value = c.year || ""; $("cPlate").value = c.plate || ""; $("cNick").value = c.nickname || "";
+    $("cAvg").value = c.ratedKmpl ? +avgOut(c.ratedKmpl).toFixed(1) : "";
+  }
+  $("carTitle").textContent = c ? "Edit car" : "Add car";
+  $("cSubmit").textContent = c ? "Save changes" : "Add car";
+  $("cDelete").hidden = !c;
+  showVinNote();
+  openDialog(carSheet);
+}
+$("carForm").addEventListener("submit", async ev => {
+  ev.preventDefault();
+  const fail = t => { $("cMsg").hidden = false; $("cMsg").textContent = t; };
+  const make = pick("cMake", "cMakeT"), model = pick("cModel", "cModelT"), engine = pick("cEngine", "cEngineT");
+  const nickname = $("cNick").value.trim(), avg = parseFloat($("cAvg").value);
+  if (!make && !nickname) return fail("Choose the make, or give the car a nickname.");
+  if (!store) return fail("You're offline. Cars need a connection to save.");
+  const car = {nickname, market: carMarket, make, model, engine, year: parseInt($("cYear").value, 10) || null,
+    ratedKmpl: avg > 0 ? +avgIn(avg).toFixed(2) : null, plate: $("cPlate").value.trim(), vin: carVin, vinData: carVinData};
+  const wasEdit = !!editingCarId;
+  $("cSubmit").disabled = true;
+  try{
+    const saved = await store.saveCar(car, editingCarId);
+    if (wasEdit){ cars[cars.findIndex(x => x.id === saved.id)] = saved; closeDialog(carSheet); render(); }
+    else { cars.push(saved); closeDialog(carSheet); setActiveCar(saved.id, true); }
+    keepOffline();
+    toast((wasEdit ? "Saved " : "Added ") + carLabel(saved));
+  }catch(e){ fail("Couldn't save the car. Check your connection and try again."); }
+  finally{ $("cSubmit").disabled = false; }
+});
+$("cDelete").addEventListener("click", async () => {
+  const n = entries.filter(e => e.carId === editingCarId).length;
+  if (!carDelArmed){ carDelArmed = true; $("cDelete").textContent = n ? "Tap again: deletes " + n + " entries too" : "Tap again to delete"; return; }
+  try{
+    await store.deleteCar(editingCarId);
+    const gone = editingCarId;
+    cars = cars.filter(x => x.id !== gone);
+    entries = entries.filter(e => e.carId !== gone);
+    rules = rules && rules.filter(r => r.carId !== gone);
+    svcLog = svcLog.filter(x => x.carId !== gone);
+    closeDialog(carSheet);
+    pickActiveCar(); render(); keepOffline(); toast("Car deleted");
+  }catch(e){ $("cMsg").hidden = false; $("cMsg").textContent = "Couldn't delete the car. Try again."; }
+});
+
+/* VIN lookup (NHTSA vPIC, free and open to browsers) */
+const VIN_FIELDS = [
+  ["Make", "Make"], ["Model", "Model"], ["ModelYear", "Model year"], ["Trim", "Trim"], ["Series", "Series"],
+  ["BodyClass", "Body"], ["DisplacementL", "Engine (L)"], ["EngineCylinders", "Cylinders"], ["EngineHP", "Horsepower"],
+  ["FuelTypePrimary", "Fuel"], ["DriveType", "Drive"], ["TransmissionStyle", "Transmission"], ["Doors", "Doors"],
+  ["Manufacturer", "Manufacturer"], ["PlantCountry", "Built in"],
+];
+let vinContext = null, vinResult = null;
+const titleCase = s => String(s || "").toLowerCase().replace(/\b[a-z]/g, m => m.toUpperCase());
+function renderVinData(data, savedAt){
+  const box = $("vData");
+  const rows = VIN_FIELDS.filter(([k]) => data.fields[k]).map(([k, label]) => `<div><dt>${label}</dt><dd>${esc(data.fields[k])}</dd></div>`).join("");
+  box.hidden = false;
+  box.innerHTML = `<div class="vin-h"><b>${esc(data.vin)}</b>${savedAt ? `<span class="muted">Saved ${longDate(savedAt.slice(0, 10))}</span>` : ""}</div>` +
+    (rows ? `<dl>${rows}</dl>` : `<p class="empty">No details came back for this VIN.</p>`) +
+    (data.note ? `<p class="hint muted">${esc(data.note)}</p>` : "");
+}
+function openVin(ctx){
+  vinContext = ctx; vinResult = null;
+  $("vMsg").hidden = true; $("vData").hidden = true; $("vUse").hidden = true;
+  const car = ctx.mode === "car" ? cars.find(x => x.id === ctx.carId) : null;
+  const vin = car ? car.vin : carVin, data = car ? car.vinData : carVinData;
+  $("vVin").value = vin || "";
+  if (data) renderVinData(data, data.decodedAt);
+  $("vUse").textContent = ctx.mode === "car" ? "Save to car" : "Use these details";
+  openDialog(vinSheet);
+  setTimeout(() => $("vVin").focus(), 30);
+}
+$("cVinBtn").addEventListener("click", () => openVin({mode: "form"}));
+$("vVin").addEventListener("input", () => { $("vVin").value = $("vVin").value.toUpperCase().replace(/[^A-Z0-9]/g, ""); });
+$("vinForm").addEventListener("submit", async ev => {
+  ev.preventDefault();
+  const vin = $("vVin").value.trim(), fail = t => { $("vMsg").hidden = false; $("vMsg").textContent = t; };
+  $("vMsg").hidden = true;
+  if (!/^[A-HJ-NPR-Z0-9]{11,17}$/.test(vin)) return fail("Enter the VIN: 17 letters and numbers (no I, O or Q).");
+  $("vDecode").disabled = true; $("vDecode").textContent = "Getting details…";
+  try{
+    const res = await fetch("https://vpic.nhtsa.dot.gov/api/vehicles/DecodeVinValues/" + encodeURIComponent(vin) + "?format=json");
+    if (!res.ok) throw new Error("http " + res.status);
+    const r = ((await res.json()).Results || [])[0] || {};
+    const fields = {};
+    VIN_FIELDS.forEach(([k]) => { const v = (r[k] || "").trim(); if (v && v !== "Not Applicable") fields[k] = k === "Make" || k === "Model" ? titleCase(v) : v; });
+    if (!fields.Make && !fields.Model) return fail("No car was found for this VIN. Check it and try again, or fill in the details yourself.");
+    // vPIC error code 0 means a clean decode; anything else comes with a short explanation.
+    const note = r.ErrorCode && !/^0\b/.test(r.ErrorCode) ? (r.ErrorText || "").split(";")[0].replace(/^\d+ - /, "") : "";
+    vinResult = {vin, fields, note, decodedAt: new Date().toISOString()};
+    renderVinData(vinResult);
+    $("vUse").hidden = false;
+  }catch(e){ fail("Couldn't reach the VIN service. Check your connection and try again."); }
+  finally{ $("vDecode").disabled = false; $("vDecode").textContent = "Get details"; }
+});
+$("vUse").addEventListener("click", async () => {
+  if (!vinResult) return;
+  const f = vinResult.fields;
+  if (vinContext.mode === "form"){
+    carVin = vinResult.vin; carVinData = vinResult;
+    // Match the decoded make, model and engine to the list where possible.
+    const make = makesFor(carMarket).find(m => m.toLowerCase() === (f.Make || "").toLowerCase()) || f.Make || "";
+    const model = modelsFor(carMarket, make).find(m => m.toLowerCase() === (f.Model || "").toLowerCase()) || f.Model || "";
+    const litres = f.DisplacementL ? (+f.DisplacementL).toFixed(1) + "L" : "";
+    const engine = enginesFor(carMarket, make, model).map(x => x.engine).find(e => litres && e.startsWith(litres)) ||
+      [litres, f.EngineCylinders ? f.EngineCylinders + " cyl" : "", f.FuelTypePrimary && !/gasoline/i.test(f.FuelTypePrimary) ? f.FuelTypePrimary : ""].filter(Boolean).join(" ");
+    avgTouched = false;
+    refreshCarForm({make, model, engine});
+    catalogAvg();
+    if (f.ModelYear) $("cYear").value = f.ModelYear;
+    showVinNote();
+    closeDialog(vinSheet);
+  } else {
+    const car = cars.find(x => x.id === vinContext.carId);
+    try{
+      const saved = await store.saveCar({...car, vin: vinResult.vin, vinData: vinResult}, car.id);
+      cars[cars.findIndex(x => x.id === car.id)] = saved;
+      closeDialog(vinSheet); render(); keepOffline(); toast("VIN details saved to " + carLabel(saved));
+    }catch(e){ $("vMsg").hidden = false; $("vMsg").textContent = "Couldn't save. Try again."; }
+  }
+});
+
+/* ---------- profile & region ---------- */
+// A region sets the default units and currency (used when it's saved, and for new cars).
+const REGIONS = [
+  ["PK", "Pakistan", "PKR", "km", "L"], ["US", "United States", "USD", "mi", "gal", "US"], ["GB", "United Kingdom", "GBP", "mi", "gal", "UK"],
+  ["AE", "United Arab Emirates", "AED", "km", "L"], ["SA", "Saudi Arabia", "SAR", "km", "L"], ["QA", "Qatar", "QAR", "km", "L"],
+  ["OM", "Oman", "OMR", "km", "L"], ["KW", "Kuwait", "KWD", "km", "L"], ["BH", "Bahrain", "BHD", "km", "L"],
+  ["IN", "India", "INR", "km", "L"], ["CA", "Canada", "CAD", "km", "L"], ["AU", "Australia", "AUD", "km", "L"],
+  ["EU", "Europe (euro)", "EUR", "km", "L"], ["ZZ", "Other", null, "km", "L"],
+];
+const regionOf = code => REGIONS.find(r => r[0] === code) || null;
+const regionMarket = () => { const r = profile && profile.region; return r === "US" ? "US" : r === "PK" || !r ? "PK" : "other"; };
+function regionText(r){
+  if (!r) return "";
+  const dist = r[3] === "km" ? "km" : "miles", vol = r[4] === "L" ? "liters" : (r[5] === "UK" ? "UK gallons" : "US gallons");
+  return "Uses " + dist + " and " + vol + (r[2] ? ", amounts in " + curSymbol(r[2]) + " (" + r[2] + ")" : "") + ".";
+}
+function applyRegion(code){
+  const r = regionOf(code); if (!r) return;
+  ui.dist = r[3]; ui.vol = r[4]; if (r[5]) settings.gallon = r[5]; if (r[2]) settings.currency = r[2];
+  saveUi(); saveSettings();
+}
+$("pRegion").innerHTML = `<option value="">Choose…</option>` + REGIONS.map(r => `<option value="${r[0]}">${esc(r[1])}</option>`).join("");
+$("pRegion").addEventListener("change", () => { $("pRegionHint").textContent = regionText(regionOf($("pRegion").value)); });
+function renderProfile(){
+  const p = profile || {}, ok = !!(profile && profile.hasDetails);
+  if (document.activeElement && document.activeElement.closest && document.activeElement.closest("#profileForm")) return;
+  $("pName").value = p.name || ""; $("pPhone").value = p.phone || ""; $("pAddress").value = p.address || ""; $("pCity").value = p.city || "";
+  $("pRegion").value = p.region || ""; $("pEmail").value = (currentUser && currentUser.email) || p.email || "";
+  $("pRegionHint").textContent = regionText(regionOf(p.region));
+  ["pPhone", "pAddress", "pCity", "pRegion"].forEach(id => $(id).disabled = !ok);
+  $("pSave").disabled = !profile;
+  $("pSince").textContent = p.since ? "Member since " + MONL[new Date(p.since).getMonth()] + " " + new Date(p.since).getFullYear() : "";
+  $("pMsg").hidden = ok || !profile;
+  if (profile && !ok) $("pMsg").textContent = "Phone, address, city and region need the database update in supabase/migrations/20261009000000_fuel_cars_and_profile.sql.";
+}
+$("profileForm").addEventListener("submit", async ev => {
+  ev.preventDefault();
+  if (!store || !profile) return;
+  const next = {name: $("pName").value.trim(), phone: $("pPhone").value.trim(), address: $("pAddress").value.trim(), city: $("pCity").value.trim(), region: $("pRegion").value};
+  if (next.phone && !/^[+\d][\d\s()-]{5,}$/.test(next.phone)){ $("pMsg").hidden = false; $("pMsg").textContent = "Enter the phone number with digits only, e.g. 0300 1234567 or +92 300 1234567."; return; }
+  const regionChanged = next.region && next.region !== profile.region;
+  $("pSave").disabled = true; $("pMsg").hidden = true;
+  try{
+    profile = await store.saveProfile(profile.hasDetails ? next : {name: next.name});
+    if (profile.name) $("accountName").textContent = profile.name;
+    if (regionChanged) applyRegion(profile.region);
+    document.activeElement.blur(); render();
+    toast("Profile saved" + (regionChanged ? " · " + regionText(regionOf(profile.region)).replace(/\.$/, "") : ""));
+  }catch(e){ $("pMsg").hidden = false; $("pMsg").textContent = "Couldn't save your profile. Check your connection and try again."; }
+  finally{ $("pSave").disabled = false; }
+});
+
 /* ---------- account ---------- */
 function showScreen(name){
   $("splash").hidden = name !== "splash";
@@ -1141,14 +1498,14 @@ $("welcomeAdd").addEventListener("click", () => openSheet());
 // without a connection. Changes still need a connection to save.
 const CACHE_KEY = "fuel-offline-v1";
 function saveOffline(user){
-  try{ localStorage.setItem(CACHE_KEY, JSON.stringify({user: {id: user.id, email: user.email, user_metadata: user.user_metadata}, entries, settings, prices, rules, svcLog, at: Date.now()})); }catch(e){}
+  try{ localStorage.setItem(CACHE_KEY, JSON.stringify({user: {id: user.id, email: user.email, user_metadata: user.user_metadata}, entries, settings, prices, rules, svcLog, cars, activeCarId, at: Date.now()})); }catch(e){}
 }
 function readOffline(userId){
   try{ const c = JSON.parse(localStorage.getItem(CACHE_KEY) || "null"); return c && (!userId || c.user.id === userId) ? c : null; }catch(e){ return null; }
 }
 function clearOffline(){ try{ localStorage.removeItem(CACHE_KEY); }catch(e){} }
 function showOffline(c){
-  entries = c.entries || []; prices = c.prices || []; rules = c.rules ?? null; svcLog = c.svcLog || []; Object.assign(settings, c.settings || {});
+  entries = c.entries || []; prices = c.prices || []; rules = c.rules ?? null; svcLog = c.svcLog || []; cars = c.cars ?? null; activeCarId = c.activeCarId || null; if (carsOn() && !cars.some(x => x.id === activeCarId)) activeCarId = cars[0].id; Object.assign(settings, c.settings || {});
   loaded = true; render();
   const d = new Date(c.at);
   status("You're offline. Showing your log as of " + d.getDate() + " " + MON[d.getMonth()] + ", " + d.toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"}) + ". Changes need a connection.");
@@ -1176,8 +1533,8 @@ fillCurrencySelect();
 let currentUserId = null, currentUser = null;
 async function reloadLog(){
   try{
-    const [rows, saved, pr, rl, sl] = await Promise.all([store.listEntries(), store.getSettings(), store.listPrices(), store.listServiceRules(), store.listServiceLog()]);
-    prices = pr; rules = rl; svcLog = sl || [];
+    const [rows, saved, pr, rl, sl, cl] = await Promise.all([store.listEntries(), store.getSettings(), store.listPrices(), store.listServiceRules(), store.listServiceLog(), store.listCars()]);
+    prices = pr; rules = rl; svcLog = sl || []; cars = cl; pickActiveCar();
     entries = rows;
     if (saved) Object.assign(settings, saved);
     loaded = true; status(""); render();
@@ -1198,13 +1555,13 @@ async function enterApp(user){
   loaded = false; entries = []; render();
   store = await openStore(user);
   // The profile isn't needed to use the log, so a missing one never blocks loading.
-  store.touchProfile().then(showProfile, () => {});
+  store.touchProfile().then(p => { profile = p; showProfile(p); render(); }, () => {});
   await reloadLog();
   // Home-screen shortcut "Add fill-up" opens the app at #add.
   if (location.hash === "#add"){ history.replaceState(null, "", location.pathname); openSheet(); }
 }
 function leaveApp(){
-  currentUserId = null; currentUser = null; store = null; entries = []; loaded = false; rules = null; svcLog = [];
+  currentUserId = null; currentUser = null; store = null; entries = []; loaded = false; rules = null; svcLog = []; cars = null; activeCarId = null; profile = null;
   $("accountSince").hidden = true;
   settings = {currency:"PKR", gallon:"US", odoUnit:"km", cardLiters:0, cardAmount:0, cardType:"liters"};
   if (sheet.open) closeSheet();

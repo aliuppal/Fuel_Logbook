@@ -63,6 +63,7 @@ const fromRow = (r) => ({
   payer: r.paid_by,
   partial: r.partial_fill,
   note: r.note,
+  carId: r.car_id ?? null,
 });
 
 const toRow = (e) => ({
@@ -73,6 +74,8 @@ const toRow = (e) => ({
   paid_by: e.payer === "card" ? "card" : "self",
   partial_fill: !!e.partial,
   note: e.note || "",
+  // Only sent once the cars migration has run (the app then always has a car selected).
+  ...(e.carId ? { car_id: e.carId } : {}),
 });
 
 const ruleFromRow = (r) => ({
@@ -83,12 +86,40 @@ const ruleFromRow = (r) => ({
   lastKm: r.last_done_km,
   lastDate: r.last_done_date,
   note: r.note,
+  carId: r.car_id ?? null,
 });
 
-const LOG_COLUMNS = "id, rule_id, name, service_date, odometer_km, cost, note";
-const logFromRow = (r) => ({ id: r.id, ruleId: r.rule_id, name: r.name, date: r.service_date, odo: r.odometer_km, cost: num(r.cost), note: r.note });
+// "*" so the same queries work before and after the cars migration adds car_id.
+const LOG_COLUMNS = "*";
+const logFromRow = (r) => ({ id: r.id, ruleId: r.rule_id, name: r.name, date: r.service_date, odo: r.odometer_km, cost: num(r.cost), note: r.note, carId: r.car_id ?? null });
 
-const FILLUP_COLUMNS = "id, fill_date, odometer_km, liters, amount_paid, paid_by, partial_fill, note";
+const FILLUP_COLUMNS = "*";
+
+const carFromRow = (r) => ({
+  id: r.id,
+  nickname: r.nickname,
+  market: r.market,
+  make: r.make,
+  model: r.model,
+  year: r.year,
+  engine: r.engine,
+  ratedKmpl: num(r.rated_kmpl),
+  plate: r.plate,
+  vin: r.vin ?? "",
+  vinData: r.vin_data ?? null,
+});
+
+const profileFromRow = (r) => ({
+  email: r.email,
+  name: r.full_name,
+  avatar: r.avatar_url,
+  since: r.created_at,
+  phone: r.phone ?? "",
+  address: r.address ?? "",
+  city: r.city ?? "",
+  region: r.region ?? "",
+  hasDetails: "phone" in r,
+});
 
 export class FuelStore {
   constructor(supabase, user) {
@@ -119,23 +150,69 @@ export class FuelStore {
     check(await this.supabase.from("fuel_fillups").delete().eq("id", id));
   }
 
-  // Refreshes name, photo and last-seen time on sign-in and returns the profile
-  // (the database creates it on first sign-in). Resolves null if it isn't there.
+  // Refreshes photo and last-seen time on sign-in and returns the profile (the
+  // database creates it on first sign-in). The Google name is only filled in when
+  // the profile has none, so a name the user typed is kept. Null if there's no profile.
   async touchProfile() {
     const m = this.user.user_metadata || {};
+    const current = check(await this.supabase.from("fuel_profiles").select("*").eq("id", this.user.id).maybeSingle());
+    if (!current) return null;
     const row = check(
       await this.supabase
         .from("fuel_profiles")
         .update({
-          full_name: m.full_name || m.name || "",
+          ...(current.full_name ? {} : { full_name: m.full_name || m.name || "" }),
           avatar_url: m.avatar_url || m.picture || null,
           last_seen_at: new Date().toISOString(),
         })
         .eq("id", this.user.id)
-        .select("email, full_name, avatar_url, created_at")
+        .select("*")
         .maybeSingle(),
     );
-    return row && { email: row.email, name: row.full_name, avatar: row.avatar_url, since: row.created_at };
+    return row && profileFromRow(row);
+  }
+
+  // Contact details; hasDetails is false until the cars-and-profile migration has run.
+  async saveProfile(p) {
+    return profileFromRow(check(
+      await this.supabase
+        .from("fuel_profiles")
+        .update(Object.fromEntries([["full_name", p.name], ["phone", p.phone], ["address", p.address], ["city", p.city], ["region", p.region]]
+          .filter(([, v]) => v !== undefined).map(([k, v]) => [k, k === "full_name" ? v || "" : v || null])))
+        .eq("id", this.user.id)
+        .select("*")
+        .single(),
+    ));
+  }
+
+  /* ---------- cars ---------- */
+  // Null when the cars table hasn't been created yet.
+  async listCars() {
+    const res = await this.supabase.from("fuel_cars").select("*").order("created_at");
+    if (res.error) return null;
+    return res.data.map(carFromRow);
+  }
+
+  async saveCar(car, id) {
+    const row = {
+      nickname: car.nickname || "",
+      market: car.market || "PK",
+      make: car.make || "",
+      model: car.model || "",
+      year: car.year || null,
+      engine: car.engine || "",
+      rated_kmpl: car.ratedKmpl || null,
+      plate: car.plate || "",
+      vin: car.vin || "",
+      vin_data: car.vinData || null,
+    };
+    const q = id ? this.supabase.from("fuel_cars").update(row).eq("id", id) : this.supabase.from("fuel_cars").insert(row);
+    return carFromRow(check(await q.select("*").single()));
+  }
+
+  // Also deletes the car's fill-ups, reminders and service history (on delete cascade).
+  async deleteCar(id) {
+    check(await this.supabase.from("fuel_cars").delete().eq("id", id));
   }
 
   // select("*") so settings still load before the card allowance migration has run.
@@ -179,7 +256,7 @@ export class FuelStore {
   async listServiceRules() {
     const res = await this.supabase
       .from("fuel_service_rules")
-      .select("id, name, every_km, every_months, last_done_km, last_done_date, note")
+      .select("*")
       .order("created_at");
     if (res.error) return null;
     return res.data.map(ruleFromRow);
@@ -203,11 +280,12 @@ export class FuelStore {
       last_done_km: rule.lastKm,
       last_done_date: rule.lastDate,
       note: rule.note || "",
+      ...(rule.carId ? { car_id: rule.carId } : {}),
     };
     const q = id
       ? this.supabase.from("fuel_service_rules").update(row).eq("id", id)
       : this.supabase.from("fuel_service_rules").insert(row);
-    return ruleFromRow(check(await q.select("id, name, every_km, every_months, last_done_km, last_done_date, note").single()));
+    return ruleFromRow(check(await q.select("*").single()));
   }
 
   async deleteServiceRule(id) {
@@ -220,7 +298,7 @@ export class FuelStore {
     return logFromRow(check(
       await this.supabase
         .from("fuel_service_log")
-        .insert({ rule_id: rule.id, name: rule.name, service_date: done.date, odometer_km: done.odo, cost: done.cost ?? null, note: done.note || "" })
+        .insert({ rule_id: rule.id, name: rule.name, service_date: done.date, odometer_km: done.odo, cost: done.cost ?? null, note: done.note || "", ...(rule.carId ? { car_id: rule.carId } : {}) })
         .select(LOG_COLUMNS)
         .single(),
     ));

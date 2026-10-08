@@ -4,7 +4,7 @@
 // - Fonts and the Supabase library (CDNs): served from cache, refreshed in the background.
 // - Supabase API and sign-in requests are never cached.
 
-const CACHE = "fuel-logbook-v1";
+const CACHE = "fuel-logbook-v2";
 const SHELL = [
   "./",
   "index.html",
@@ -12,6 +12,7 @@ const SHELL = [
   "js/app.js",
   "js/cloud.js",
   "js/config.js",
+  "js/cars.js",
   "manifest.webmanifest",
   "icons/icon.svg",
   "icons/icon-192.png",
