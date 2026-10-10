@@ -1326,8 +1326,13 @@ const q = v => encodeURIComponent(v);
 function fillEpa(id, items, current, byText){
   const el = $(id);
   el.innerHTML = `<option value="">Choose…</option>` + items.map(x => `<option value="${esc(x.value)}">${esc(x.text)}</option>`).join("") + `<option value="${OTHER}">Other…</option>`;
-  const hit = current && items.find(x => (byText ? x.text : x.value).toLowerCase() === String(current).toLowerCase());
-  el.value = hit ? hit.value : current ? OTHER : "";
+  // Exact match first; otherwise the first EPA name that starts with the listed one
+  // (the year is often picked last, after "GLB" from the built-in list → "GLB250").
+  const norm = v => String(v).toLowerCase().replace(/[^a-z0-9]/g, "");
+  const key = x => byText ? x.text : x.value;
+  const hit = current && (items.find(x => key(x).toLowerCase() === String(current).toLowerCase()) ||
+    (!byText && norm(current) && items.find(x => norm(key(x)).startsWith(norm(current)))));
+  el.value = hit ? hit.value : "";
 }
 function epaBusy(on){ ["cMake", "cModel", "cEngine"].forEach(id => $(id).disabled = on); $("cAvgHint").textContent = on ? "Getting the EPA rating…" : $("cAvgHint").textContent; }
 function epaFailed(){
