@@ -455,3 +455,42 @@ body{-webkit-tap-highlight-color:transparent;overscroll-behavior-y:none}
   .car-row-act{grid-column:1/-1;justify-content:flex-start}
 }
 @media (max-width:640px){ .car-pick select{max-width:150px} .vin-data dl{grid-template-columns:1fr} .cc-avg b{font-size:24px} }
+
+/* ---------- slim car bar (same size as the fuel card bar) ---------- */
+.car-card{display:flex;align-items:center;flex-wrap:wrap;gap:8px 16px;padding:9px 14px;border-radius:12px;font-size:13.5px}
+.cc-id{gap:10px}
+.cc-id > div{display:flex;align-items:baseline;gap:4px 10px;flex-wrap:wrap;min-width:0}
+.cc-icon{width:28px;height:28px;border-radius:8px}
+.cc-icon svg{width:18px;height:18px}
+.cc-id h2{font-size:18px;line-height:1.2}
+.cc-spec{display:inline;font-size:12.5px}
+.cc-avgs{display:flex;align-items:baseline;gap:6px 16px;flex-wrap:wrap;margin-left:auto}
+.cc-avg{display:flex;align-items:baseline;gap:6px;background:none;border-radius:0;padding:0}
+.cc-avg .lbl{font-size:11px}
+.cc-avg b{font-size:19px;font-weight:600}
+.cc-avg:not(:last-child) .cc-u{display:none}
+.cc-cmp{font-size:12.5px;white-space:nowrap}
+.cc-actions{gap:6px}
+.cc-actions .btn{padding:5px 12px;font-size:13px}
+@media (max-width:880px){ .cc-avgs{margin-left:0} }
+
+/* ---------- car menu ---------- */
+.car-pick{position:relative;padding:0;border:0;background:none}
+.car-btn{display:inline-flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:7px 12px 7px 12px;font-size:14px;font-weight:600;cursor:pointer;color:var(--ink);max-width:260px}
+.car-btn svg:first-child{flex:none;color:var(--muted)}
+.car-btn #carBtnName{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.car-btn .chev{flex:none;color:var(--muted);transition:transform .15s}
+.car-btn[aria-expanded="true"]{border-color:var(--accent)}
+.car-btn[aria-expanded="true"] .chev{transform:rotate(180deg)}
+.car-menu{left:0;right:auto;min-width:280px;max-width:min(360px,calc(100vw - 32px))}
+.car-opt{display:flex;align-items:center;gap:10px;width:100%}
+.car-opt-id{display:grid;min-width:0;line-height:1.3}
+.car-opt-id b{font-weight:600;overflow-wrap:anywhere}
+.car-opt-id span{font-size:12px;color:var(--muted)}
+.car-opt.on{background:var(--accent-soft)}
+.car-opt.on b{color:var(--accent)}
+.car-opt-tick{margin-left:auto;color:var(--accent);font-weight:700}
+.menu-sep{height:1px;background:var(--grid);margin:4px 0}
+.move-what{margin:0;font-size:14px;color:var(--muted)}
+.move-what b{color:var(--ink)}
+@media (max-width:640px){ .car-btn{max-width:170px} .car-menu{left:auto;right:0} }

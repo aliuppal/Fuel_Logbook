@@ -54,7 +54,10 @@
       <div><h1>Fuel Logbook</h1><p id="sub">Loading…</p></div>
     </div>
     <div class="bar-tools">
-      <label class="car-pick" id="carPick" hidden><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 16V11l2-5h10l2 5v5M3 16h18v3h-3v-1.5H6V19H3zM5 11h14M7.5 13.5h1M15.5 13.5h1" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg><select id="carSel" aria-label="Car"></select></label>
+      <div class="car-pick" id="carPick" hidden>
+        <button class="car-btn" type="button" id="carBtn" aria-haspopup="true" aria-expanded="false"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 16V11l2-5h10l2 5v5M3 16h18v3h-3v-1.5H6V19H3zM5 11h14M7.5 13.5h1M15.5 13.5h1" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg><span id="carBtnName"></span><svg class="chev" width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 4.5l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+        <div class="menu car-menu" id="carMenu" role="menu" hidden></div>
+      </div>
       <div class="seg" role="group" aria-label="Distance unit"><button type="button" data-dist="km">km</button><button type="button" data-dist="mi">miles</button></div>
       <div class="seg" role="group" aria-label="Fuel unit"><button type="button" data-vol="L">liters</button><button type="button" data-vol="gal">gallons</button></div>
       <button class="btn accent" type="button" id="addTop"><span aria-hidden="true">＋</span> Add fill-up</button>
@@ -93,6 +96,7 @@
       </ol>
       <div class="actions">
         <button class="btn accent" type="button" id="welcomeCar" hidden><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 16V11l2-5h10l2 5v5M3 16h18v3h-3v-1.5H6V19H3zM5 11h14M7.5 13.5h1M15.5 13.5h1" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg> Add your car</button>
+        <button class="btn accent" type="button" id="welcomeMove" hidden>Move entries here</button>
         <button class="btn" type="button" id="welcomeAdd"><span aria-hidden="true">＋</span> Add first fill-up</button>
       </div>
     </div>
@@ -379,6 +383,28 @@
       <div class="r">
         <button class="btn ghost" type="button" data-close="carSheet">Cancel</button>
         <button class="btn accent" type="submit" id="cSubmit">Add car</button>
+      </div>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="moveSheet" aria-labelledby="moveTitle">
+  <form class="sheet" id="moveForm" novalidate>
+    <div class="sheet-h">
+      <h2 id="moveTitle">Move entries</h2>
+      <button class="iconbtn" type="button" data-close="moveSheet" aria-label="Close"><svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><path d="M4 4l10 10M14 4L4 14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
+    </div>
+    <p class="move-what" id="moveWhat"></p>
+    <div class="row2">
+      <label>From<select id="mFrom"></select></label>
+      <label>To<select id="mTo"></select></label>
+    </div>
+    <label class="check"><input type="checkbox" id="mDelete"> Delete <span id="mFromName">the old car</span> after moving</label>
+    <p class="formmsg" id="mMsg" hidden></p>
+    <div class="sheet-f">
+      <div class="r">
+        <button class="btn ghost" type="button" data-close="moveSheet">Cancel</button>
+        <button class="btn accent" type="submit" id="mSubmit">Move entries</button>
       </div>
     </div>
   </form>

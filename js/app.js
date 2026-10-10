@@ -1155,12 +1155,27 @@ async function ensureCar(){
 
 function renderCars(C){
   $("carPick").hidden = !carsOn();
+  const counts = {};
+  entries.forEach(e => { const k = e.carId || (carsOn() && cars[0].id); counts[k] = (counts[k] || 0) + 1; });
   if (carsOn()){
-    $("carSel").innerHTML = cars.map(c => `<option value="${esc(c.id)}">${esc(carLabel(c))}</option>`).join("") +
-      `<option value="__add">＋ Add a car…</option>`;
-    $("carSel").value = activeCarId;
+    const cur = activeCar();
+    $("carBtnName").textContent = cur ? carLabel(cur) : "";
+    $("carMenu").innerHTML = `<div class="menu-who"><strong>Your cars</strong><span>Each car has its own dashboard</span></div>` +
+      cars.map(c => `<button class="menu-item car-opt${c.id === activeCarId ? " on" : ""}" type="button" role="menuitemradio" aria-checked="${c.id === activeCarId}" data-car-pick="${esc(c.id)}">
+        <span class="car-opt-id"><b>${esc(carLabel(c))}</b><span>${esc([c.engine, MARKETS[c.market]].filter(Boolean).join(" · "))} · ${counts[c.id] || 0} entries</span></span>
+        ${c.id === activeCarId ? '<span class="car-opt-tick" aria-hidden="true">✓</span>' : ""}</button>`).join("") +
+      `<div class="menu-sep"></div><button class="menu-item" type="button" role="menuitem" data-car-menu="add">＋ Add a car</button>` +
+      `<button class="menu-item" type="button" role="menuitem" data-car-menu="manage">Manage cars</button>`;
   }
   $("welcomeCar").hidden = !(Array.isArray(cars) && !cars.length);
+  // A car with no entries while another car has them: offer to move them here.
+  const donor = carsOn() && cars.find(c => c.id !== activeCarId && counts[c.id]);
+  $("welcomeMove").hidden = !(donor && !counts[activeCarId]);
+  if (donor && !counts[activeCarId]){
+    $("welcomeTitle").textContent = "No entries for " + carLabel(activeCar()) + " yet";
+    $("welcomeMove").textContent = "Move entries from " + carLabel(donor);
+    $("welcomeMove").dataset.from = donor.id;
+  } else if (currentUser) $("welcomeTitle").textContent = "Welcome, " + ($("accountName").textContent || "").split(" ")[0];
   $("carsPanel").hidden = cars === null;
 
   // Overview: the car's typical average next to what you're getting.
@@ -1185,8 +1200,6 @@ function renderCars(C){
 
   // Settings: the list of cars.
   if (cars !== null){
-    const counts = {};
-    entries.forEach(e => { const k = e.carId || (cars[0] && cars[0].id); counts[k] = (counts[k] || 0) + 1; });
     $("carList").innerHTML = !cars.length
       ? `<div class="svc-empty"><p>Add your car to get its own dashboard, log and service reminders. Add more cars any time; each one keeps its own fill-ups.</p></div>`
       : cars.map(x => `<div class="car-row${x.id === activeCarId ? " active" : ""}">
@@ -1196,22 +1209,79 @@ function renderCars(C){
           <div class="car-row-act">
             ${x.id === activeCarId ? `<span class="pill ok">Showing</span>` : `<button class="btn ghost" type="button" data-car-open="${esc(x.id)}">Show</button>`}
             ${x.vinData ? `<button class="btn ghost" type="button" data-car-vin="${esc(x.id)}">VIN Data</button>` : ""}
+            ${counts[x.id] && cars.length > 1 ? `<button class="btn ghost" type="button" data-car-move="${esc(x.id)}">Move entries</button>` : ""}
             <button class="btn ghost" type="button" data-car-edit="${esc(x.id)}">Edit</button>
           </div>
         </div>`).join("");
   }
 }
-$("carSel").addEventListener("change", () => {
-  const v = $("carSel").value;
-  if (v === "__add"){ $("carSel").value = activeCarId; openCar(); return; }
-  setActiveCar(v, true);
-  toast("Showing " + carLabel(activeCar()));
+function toggleCarMenu(open){ $("carMenu").hidden = !open; $("carBtn").setAttribute("aria-expanded", open); }
+$("carBtn").addEventListener("click", ev => { ev.stopPropagation(); toggleCarMenu($("carMenu").hidden); });
+document.addEventListener("click", ev => { if (!ev.target.closest(".car-pick")) toggleCarMenu(false); });
+document.addEventListener("keydown", ev => { if (ev.key === "Escape") toggleCarMenu(false); });
+$("carMenu").addEventListener("click", ev => {
+  const p = ev.target.closest("[data-car-pick]"), m = ev.target.closest("[data-car-menu]");
+  if (!p && !m) return;
+  toggleCarMenu(false);
+  if (p){ if (p.dataset.carPick !== activeCarId){ setActiveCar(p.dataset.carPick, true); toast("Showing " + carLabel(activeCar())); } }
+  else if (m.dataset.carMenu === "add") openCar();
+  else { ui.tab = "settings"; saveUi(); render(); scrollTo(0, 0); }
 });
+$("welcomeMove").addEventListener("click", () => openMove($("welcomeMove").dataset.from, activeCarId));
 $("carList").addEventListener("click", ev => {
   const o = ev.target.closest("[data-car-open]"), e = ev.target.closest("[data-car-edit]"), v = ev.target.closest("[data-car-vin]");
   if (o){ setActiveCar(o.dataset.carOpen, true); ui.tab = "overview"; saveUi(); render(); scrollTo(0, 0); }
   else if (e) openCar(e.dataset.carEdit);
   else if (v) openVin({mode: "car", carId: v.dataset.carVin});
+  else { const mv = ev.target.closest("[data-car-move]"); if (mv) openMove(mv.dataset.carMove); }
+});
+
+/* move entries between cars */
+const moveSheet = $("moveSheet");
+moveSheet.addEventListener("click", ev => { if (ev.target === moveSheet) closeDialog(moveSheet); });
+const countsFor = id => ({
+  fills: entries.filter(e => e.carId === id || (!e.carId && cars[0].id === id)).length,
+  rules: (rules || []).filter(r => r.carId === id).length,
+  svc: svcLog.filter(x => x.carId === id).length,
+});
+function describeMove(){
+  const from = $("mFrom").value, c = countsFor(from), car = cars.find(x => x.id === from);
+  const parts = [c.fills + " fill-up" + (c.fills === 1 ? "" : "s"), c.rules ? c.rules + " reminder" + (c.rules === 1 ? "" : "s") : "", c.svc ? c.svc + " service" + (c.svc === 1 ? "" : "s") : ""].filter(Boolean);
+  $("moveWhat").innerHTML = "Moves <b>" + parts.join(", ") + "</b> to the car you choose.";
+  $("mFromName").textContent = car ? carLabel(car) : "the old car";
+  [...$("mTo").options].forEach(o => o.disabled = o.value === from);
+  if ($("mTo").value === from) $("mTo").value = [...$("mTo").options].find(o => !o.disabled)?.value || "";
+}
+function openMove(fromId, toId){
+  const opts = cars.map(c => `<option value="${esc(c.id)}">${esc(carLabel(c))}</option>`).join("");
+  $("mFrom").innerHTML = opts; $("mTo").innerHTML = opts;
+  $("mFrom").value = fromId;
+  $("mTo").value = toId || cars.find(c => c.id !== fromId).id;
+  const from = cars.find(c => c.id === fromId);
+  // A placeholder "My car" with no details is usually meant to be replaced.
+  $("mDelete").checked = !!from && !from.make && from.nickname === "My car";
+  $("mMsg").hidden = true;
+  describeMove();
+  openDialog(moveSheet);
+}
+$("mFrom").addEventListener("change", describeMove);
+$("moveForm").addEventListener("submit", async ev => {
+  ev.preventDefault();
+  const from = $("mFrom").value, to = $("mTo").value, del = $("mDelete").checked;
+  if (!from || !to || from === to){ $("mMsg").hidden = false; $("mMsg").textContent = "Choose two different cars."; return; }
+  if (!store){ $("mMsg").hidden = false; $("mMsg").textContent = "You're offline. Moving entries needs a connection."; return; }
+  const fromCar = cars.find(c => c.id === from), toCar = cars.find(c => c.id === to), n = countsFor(from).fills;
+  $("mSubmit").disabled = true;
+  try{
+    await store.moveCarData(from, to);
+    const move = x => { if (x.carId === from || (!x.carId && cars[0].id === from)) x.carId = to; };
+    entries.forEach(move); (rules || []).forEach(move); svcLog.forEach(move);
+    if (del){ await store.deleteCar(from); cars = cars.filter(c => c.id !== from); }
+    closeDialog(moveSheet);
+    setActiveCar(to, true); keepOffline();
+    toast("Moved " + n + " entries to " + carLabel(toCar) + (del ? " · removed " + carLabel(fromCar) : ""));
+  }catch(e){ $("mMsg").hidden = false; $("mMsg").textContent = "Couldn't move the entries. Check your connection and try again."; }
+  finally{ $("mSubmit").disabled = false; }
 });
 $("carAdd").addEventListener("click", () => openCar());
 $("welcomeCar").addEventListener("click", () => openCar());
@@ -1307,7 +1377,11 @@ $("carForm").addEventListener("submit", async ev => {
   try{
     const saved = await store.saveCar(car, editingCarId);
     if (wasEdit){ cars[cars.findIndex(x => x.id === saved.id)] = saved; closeDialog(carSheet); render(); }
-    else { cars.push(saved); closeDialog(carSheet); setActiveCar(saved.id, true); }
+    else {
+      cars.push(saved); closeDialog(carSheet); setActiveCar(saved.id, true);
+      const placeholder = cars.find(c => c.id !== saved.id && !c.make && c.nickname === "My car" && countsFor(c.id).fills);
+      if (placeholder) openMove(placeholder.id, saved.id);
+    }
     keepOffline();
     toast((wasEdit ? "Saved " : "Added ") + carLabel(saved));
   }catch(e){ fail("Couldn't save the car. Check your connection and try again."); }

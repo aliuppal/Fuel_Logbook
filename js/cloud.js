@@ -210,6 +210,13 @@ export class FuelStore {
     return carFromRow(check(await q.select("*").single()));
   }
 
+  // Moves every fill-up, reminder and service of one car to another.
+  async moveCarData(fromId, toId) {
+    for (const table of ["fuel_fillups", "fuel_service_rules", "fuel_service_log"]) {
+      check(await this.supabase.from(table).update({ car_id: toId }).eq("car_id", fromId));
+    }
+  }
+
   // Also deletes the car's fill-ups, reminders and service history (on delete cascade).
   async deleteCar(id) {
     check(await this.supabase.from("fuel_cars").delete().eq("id", id));
