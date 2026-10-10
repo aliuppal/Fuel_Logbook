@@ -1,7 +1,9 @@
 // Common cars in Pakistan and the US with a typical fuel average in km per liter.
-// US figures are EPA combined ratings (mpg × 0.4251); Pakistan has no official
-// ratings, so those are typical owner averages in mixed city/highway driving.
-// They are a starting point: each car's average can be changed when it's added.
+// US: when a year is picked, the add-car form reads the exact EPA rating for the
+// year, model and version from fueleconomy.gov; these figures (2024 EPA combined,
+// mpg × 0.4251) are only used without a year or when that site can't be reached.
+// Pakistan has no official fuel ratings, so those are estimated owner averages in
+// mixed driving. Every car's average can be changed when it's added.
 // Rows: [make, model, engine, km/L]
 
 export const MARKETS = { PK: "Pakistan", US: "United States", other: "Other" };
@@ -48,13 +50,13 @@ export const CAR_CATALOG = {
   ],
   US: [
     ["Toyota", "Camry", "2.5L", 13.6], ["Toyota", "Camry", "2.5L Hybrid", 22.1], ["Toyota", "Corolla", "2.0L", 14.9],
-    ["Toyota", "Corolla", "1.8L Hybrid", 21.3], ["Toyota", "RAV4", "2.5L", 12.8], ["Toyota", "RAV4", "2.5L Hybrid", 16.6],
+    ["Toyota", "Corolla", "1.8L Hybrid", 21.3], ["Toyota", "RAV4", "2.5L", 12.3], ["Toyota", "RAV4", "2.5L Hybrid", 16.6],
     ["Toyota", "Highlander", "2.4L Turbo", 10.2], ["Toyota", "Highlander", "2.5L Hybrid", 14.9], ["Toyota", "Tacoma", "2.4L Turbo", 8.9],
     ["Toyota", "Tundra", "3.4L Twin-Turbo V6", 8.5], ["Toyota", "Prius", "2.0L Hybrid", 24.2], ["Toyota", "4Runner", "4.0L V6", 7.2],
     ["Honda", "Civic", "2.0L", 15.3], ["Honda", "Civic", "1.5L Turbo", 15.3], ["Honda", "Accord", "1.5L Turbo", 13.6],
-    ["Honda", "Accord", "2.0L Hybrid", 20.4], ["Honda", "CR-V", "1.5L Turbo", 12.8], ["Honda", "CR-V", "2.0L Hybrid", 17.0],
+    ["Honda", "Accord", "2.0L Hybrid", 20.4], ["Honda", "CR-V", "1.5L Turbo", 12.3], ["Honda", "CR-V", "2.0L Hybrid", 17.0],
     ["Honda", "HR-V", "2.0L", 11.9], ["Honda", "Pilot", "3.5L V6", 9.4],
-    ["Ford", "F-150", "2.7L EcoBoost V6", 9.4], ["Ford", "F-150", "3.5L EcoBoost V6", 8.5], ["Ford", "F-150", "5.0L V8", 8.1],
+    ["Ford", "F-150", "2.7L EcoBoost V6", 8.9], ["Ford", "F-150", "3.5L EcoBoost V6", 8.5], ["Ford", "F-150", "5.0L V8", 8.1],
     ["Ford", "Escape", "1.5L EcoBoost", 12.8], ["Ford", "Explorer", "2.3L EcoBoost", 10.2], ["Ford", "Ranger", "2.3L EcoBoost", 9.4],
     ["Ford", "Bronco", "2.3L EcoBoost", 8.5], ["Ford", "Mustang", "2.3L EcoBoost", 10.6], ["Ford", "Mustang", "5.0L V8", 8.1],
     ["Chevrolet", "Silverado 1500", "2.7L Turbo", 8.5], ["Chevrolet", "Silverado 1500", "5.3L V8", 7.7], ["Chevrolet", "Equinox", "1.5L Turbo", 11.9],
@@ -73,17 +75,17 @@ export const CAR_CATALOG = {
     // Mercedes-Benz petrol line-up; model names match what the VIN decoder returns.
     ["Mercedes-Benz", "A-Class", "A 220 2.0L Turbo", 11.9], ["Mercedes-Benz", "CLA", "CLA 250 2.0L Turbo", 11.9],
     ["Mercedes-Benz", "CLA", "AMG CLA 35 2.0L Turbo", 10.6], ["Mercedes-Benz", "CLA", "AMG CLA 45 2.0L Turbo", 9.8],
-    ["Mercedes-Benz", "C-Class", "C 300 2.0L Turbo", 11.5], ["Mercedes-Benz", "C-Class", "AMG C 43 2.0L Turbo", 10.6],
+    ["Mercedes-Benz", "C-Class", "C 300 2.0L Turbo", 12.8], ["Mercedes-Benz", "C-Class", "AMG C 43 2.0L Turbo", 10.6],
     ["Mercedes-Benz", "CLE", "CLE 300 2.0L Turbo", 11.5], ["Mercedes-Benz", "CLE", "CLE 450 3.0L I6", 10.6], ["Mercedes-Benz", "CLE", "AMG CLE 53 3.0L I6", 9.8],
     ["Mercedes-Benz", "E-Class", "E 350 2.0L Turbo", 11.5], ["Mercedes-Benz", "E-Class", "E 450 3.0L I6", 10.6], ["Mercedes-Benz", "E-Class", "AMG E 53 3.0L I6", 9.8],
     ["Mercedes-Benz", "S-Class", "S 500 3.0L I6", 9.4], ["Mercedes-Benz", "S-Class", "S 580 4.0L V8", 8.5], ["Mercedes-Benz", "S-Class", "Maybach S 680 6.0L V12", 6.0],
     ["Mercedes-Benz", "SL", "AMG SL 43 2.0L Turbo", 9.4], ["Mercedes-Benz", "SL", "AMG SL 55 4.0L V8", 7.2], ["Mercedes-Benz", "SL", "AMG SL 63 4.0L V8", 6.8],
     ["Mercedes-Benz", "AMG GT", "AMG GT 55 4.0L V8", 7.2], ["Mercedes-Benz", "AMG GT", "AMG GT 63 4.0L V8", 6.8],
     ["Mercedes-Benz", "GLA", "GLA 250 2.0L Turbo", 11.9], ["Mercedes-Benz", "GLA", "AMG GLA 35 2.0L Turbo", 10.2], ["Mercedes-Benz", "GLA", "AMG GLA 45 2.0L Turbo", 9.4],
-    ["Mercedes-Benz", "GLB", "GLB 250 2.0L Turbo", 10.6], ["Mercedes-Benz", "GLB", "AMG GLB 35 2.0L Turbo", 9.8],
-    ["Mercedes-Benz", "GLC", "GLC 300 2.0L Turbo", 11.1], ["Mercedes-Benz", "GLC", "AMG GLC 43 2.0L Turbo", 9.4], ["Mercedes-Benz", "GLC", "AMG GLC 63 2.0L Turbo Hybrid", 8.5],
+    ["Mercedes-Benz", "GLB", "GLB 250 2.0L Turbo", 11.9], ["Mercedes-Benz", "GLB", "AMG GLB 35 2.0L Turbo", 9.8],
+    ["Mercedes-Benz", "GLC", "GLC 300 2.0L Turbo", 11.5], ["Mercedes-Benz", "GLC", "AMG GLC 43 2.0L Turbo", 9.4], ["Mercedes-Benz", "GLC", "AMG GLC 63 2.0L Turbo Hybrid", 8.5],
     ["Mercedes-Benz", "GLC Coupe", "GLC 300 2.0L Turbo", 10.6], ["Mercedes-Benz", "GLC Coupe", "AMG GLC 43 2.0L Turbo", 9.4],
-    ["Mercedes-Benz", "GLE", "GLE 350 2.0L Turbo", 9.8], ["Mercedes-Benz", "GLE", "GLE 450 3.0L I6", 9.4], ["Mercedes-Benz", "GLE", "GLE 580 4.0L V8", 8.1],
+    ["Mercedes-Benz", "GLE", "GLE 350 2.0L Turbo", 10.2], ["Mercedes-Benz", "GLE", "GLE 450 3.0L I6", 9.4], ["Mercedes-Benz", "GLE", "GLE 580 4.0L V8", 8.1],
     ["Mercedes-Benz", "GLE", "AMG GLE 53 3.0L I6", 8.5], ["Mercedes-Benz", "GLE", "AMG GLE 63 S 4.0L V8", 6.8],
     ["Mercedes-Benz", "GLE Coupe", "AMG GLE 53 3.0L I6", 8.5], ["Mercedes-Benz", "GLE Coupe", "AMG GLE 63 S 4.0L V8", 6.8],
     ["Mercedes-Benz", "GLS", "GLS 450 3.0L I6", 8.9], ["Mercedes-Benz", "GLS", "GLS 580 4.0L V8", 7.7], ["Mercedes-Benz", "GLS", "Maybach GLS 600 4.0L V8", 7.2],

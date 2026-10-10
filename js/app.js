@@ -1306,6 +1306,91 @@ function syncCustom(sel, txt){
   $(sel).hidden = carMarket === "other"; $(txt).hidden = !custom;
 }
 const pick = (sel, txt) => carMarket === "other" || $(sel).value === OTHER ? $(txt).value.trim() : $(sel).value;
+/* EPA ratings for US cars: fueleconomy.gov is the official source and open to
+   browsers. Picking year → make → model → version gives that exact car's combined
+   mpg. Without a year, or if the site can't be reached, the built-in list is used. */
+const EPA = "https://www.fueleconomy.gov/ws/rest";
+const epaCache = {};
+let epaReq = 0, epaDown = false, epaVehicle = null;
+async function epaGet(path){
+  if (path in epaCache) return epaCache[path];
+  const res = await fetch(EPA + path, {headers: {Accept: "application/json"}});
+  if (!res.ok) throw new Error("epa " + res.status);
+  const txt = await res.text();
+  return (epaCache[path] = txt && txt !== "null" ? JSON.parse(txt) : null);
+}
+const epaItems = j => j && j.menuItem ? [].concat(j.menuItem) : [];
+const usesEpa = () => carMarket === "US" && !!$("cYear").value && !epaDown;
+const q = v => encodeURIComponent(v);
+// Fills a select with EPA menu items (text shown, value kept), plus Other…
+function fillEpa(id, items, current, byText){
+  const el = $(id);
+  el.innerHTML = `<option value="">Choose…</option>` + items.map(x => `<option value="${esc(x.value)}">${esc(x.text)}</option>`).join("") + `<option value="${OTHER}">Other…</option>`;
+  const hit = current && items.find(x => (byText ? x.text : x.value).toLowerCase() === String(current).toLowerCase());
+  el.value = hit ? hit.value : current ? OTHER : "";
+}
+function epaBusy(on){ ["cMake", "cModel", "cEngine"].forEach(id => $(id).disabled = on); $("cAvgHint").textContent = on ? "Getting the EPA rating…" : $("cAvgHint").textContent; }
+function epaFailed(){
+  epaDown = true;
+  refreshCarForm();
+  $("cAvgHint").textContent = "Couldn't reach fueleconomy.gov, so this is the typical figure from the built-in list. Check your connection and reopen the form for the exact EPA rating.";
+}
+async function epaMakes(keepMake, keepModel, keepEngine){
+  const id = ++epaReq, year = $("cYear").value;
+  epaBusy(true);
+  try{
+    const items = epaItems(await epaGet("/vehicle/menu/make?year=" + q(year)));
+    if (id !== epaReq) return;
+    fillEpa("cMake", items, keepMake);
+    syncCustom("cMake", "cMakeT");
+    await epaModels(keepModel, keepEngine, id);
+  }catch(e){ if (id === epaReq) epaFailed(); }
+  finally{ if (id === epaReq) epaBusy(false); }
+}
+async function epaModels(keepModel, keepEngine, id = ++epaReq){
+  const year = $("cYear").value, make = $("cMake").value;
+  if (!make || make === OTHER){
+    fillEpa("cModel", [], ""); fillEpa("cEngine", [], ""); syncCustom("cModel", "cModelT"); syncCustom("cEngine", "cEngineT");
+    $("cAvgHint").textContent = make === OTHER ? "Enter the average your car is rated for." : "Pick the make, model and version to get the EPA rating.";
+    return;
+  }
+  const items = epaItems(await epaGet("/vehicle/menu/model?year=" + q(year) + "&make=" + q(make)));
+  if (id !== epaReq) return;
+  fillEpa("cModel", items, keepModel);
+  syncCustom("cModel", "cModelT");
+  await epaOptions(keepEngine, id);
+}
+async function epaOptions(keepEngine, id = ++epaReq){
+  const year = $("cYear").value, make = $("cMake").value, model = $("cModel").value;
+  epaVehicle = null;
+  if (!model || model === OTHER){
+    fillEpa("cEngine", [], ""); syncCustom("cEngine", "cEngineT");
+    $("cAvgHint").textContent = model === OTHER ? "Enter the average your car is rated for." : "Pick the model and version to get the EPA rating.";
+    return;
+  }
+  const items = epaItems(await epaGet("/vehicle/menu/options?year=" + q(year) + "&make=" + q(make) + "&model=" + q(model)));
+  if (id !== epaReq) return;
+  fillEpa("cEngine", items, keepEngine, true);
+  if (!$("cEngine").value && items.length === 1) $("cEngine").value = items[0].value;
+  syncCustom("cEngine", "cEngineT");
+  await epaRating(id);
+}
+async function epaRating(id = ++epaReq){
+  const vid = $("cEngine").value;
+  epaVehicle = null;
+  if (!vid || vid === OTHER){ $("cAvgHint").textContent = "Pick the version to get its EPA rating."; return; }
+  const v = await epaGet("/vehicle/" + q(vid));
+  if (id !== epaReq || !v) return;
+  epaVehicle = v;
+  if (!avgTouched && v.comb08 > 0) $("cAvg").value = v.comb08;
+  $("cAvgHint").textContent = "EPA rating for the " + v.year + " " + v.make + " " + v.model + ": " + v.city08 + " city · " + v.highway08 + " highway · " +
+    v.comb08 + " combined mpg (" + [v.drive, v.fuelType].filter(Boolean).join(", ") + "). Source: fueleconomy.gov.";
+}
+// The engine saved with the car: the EPA version text, or the typed / listed engine.
+const carEngine = () => usesEpa() && $("cEngine").value && $("cEngine").value !== OTHER
+  ? $("cEngine").selectedOptions[0].textContent : pick("cEngine", "cEngineT");
+const carModel = () => usesEpa() && $("cModel").value && $("cModel").value !== OTHER ? $("cModel").selectedOptions[0].textContent : pick("cModel", "cModelT");
+
 function refreshCarForm(keep){
   document.querySelectorAll("[data-market]").forEach(b => b.setAttribute("aria-pressed", b.dataset.market === carMarket));
   const make = keep ? keep.make : pick("cMake", "cMakeT"), model = keep ? keep.model : pick("cModel", "cModelT"), engine = keep ? keep.engine : pick("cEngine", "cEngineT");
@@ -1315,11 +1400,14 @@ function refreshCarForm(keep){
   if (keep){ $("cMakeT").value = keep.make || ""; $("cModelT").value = keep.model || ""; $("cEngineT").value = keep.engine || ""; }
   syncCustom("cMake", "cMakeT"); syncCustom("cModel", "cModelT"); syncCustom("cEngine", "cEngineT");
   $("cAvgLbl").textContent = "Car average (" + (carMarket === "US" ? "mpg" : "km/L") + ")";
-  $("cAvgHint").textContent = carMarket === "US" ? "EPA combined rating when the engine is picked from the list. Change it if yours differs."
-    : carMarket === "PK" ? "Typical owner average in mixed driving when the engine is picked from the list. Change it if yours differs."
+  $("cEngineLbl").textContent = usesEpa() ? "Version" : "Engine";
+  $("cAvgHint").textContent = carMarket === "US" ? (epaDown ? $("cAvgHint").textContent : "Pick the year first to get the official EPA rating for the exact model and version.")
+    : carMarket === "PK" ? "Estimated typical average in mixed driving. Pakistan has no official fuel ratings, so change it to what your car usually gets."
     : "Enter the average your car is rated for or usually gets.";
+  if (usesEpa()) epaMakes(make, model, engine);
 }
 function catalogAvg(){
+  if (usesEpa()) return;
   const hit = enginesFor(carMarket, $("cMake").value, $("cModel").value).find(x => x.engine === $("cEngine").value);
   if (hit && !avgTouched) $("cAvg").value = +avgOut(hit.kmpl).toFixed(1);
 }
@@ -1331,13 +1419,20 @@ $("carForm").querySelectorAll("[data-market]").forEach(b => b.addEventListener("
   refreshCarForm(keep);
   if (kmpl) $("cAvg").value = +avgOut(kmpl).toFixed(1);
 }));
-$("cMake").addEventListener("change", () => { fillSelect("cModel", modelsFor(carMarket, $("cMake").value), ""); fillSelect("cEngine", [], ""); syncCustom("cMake", "cMakeT"); syncCustom("cModel", "cModelT"); syncCustom("cEngine", "cEngineT"); });
+$("cYear").addEventListener("change", () => {
+  if (carMarket !== "US") return;
+  const keep = {make: $("cMake").selectedOptions[0] && $("cMake").value !== OTHER ? $("cMake").value : pick("cMake", "cMakeT"), model: carModel(), engine: carEngine()};
+  avgTouched = false;
+  refreshCarForm(keep);
+});
+$("cMake").addEventListener("change", () => { if (usesEpa()){ syncCustom("cMake", "cMakeT"); epaModels("", "").catch(epaFailed); return; } fillSelect("cModel", modelsFor(carMarket, $("cMake").value), ""); fillSelect("cEngine", [], ""); syncCustom("cMake", "cMakeT"); syncCustom("cModel", "cModelT"); syncCustom("cEngine", "cEngineT"); });
 $("cModel").addEventListener("change", () => {
+  if (usesEpa()){ avgTouched = false; syncCustom("cModel", "cModelT"); epaOptions("").catch(epaFailed); return; }
   const engines = enginesFor(carMarket, $("cMake").value, $("cModel").value).map(x => x.engine);
   fillSelect("cEngine", engines, engines.length === 1 ? engines[0] : "");
   syncCustom("cModel", "cModelT"); syncCustom("cEngine", "cEngineT"); catalogAvg();
 });
-$("cEngine").addEventListener("change", () => { syncCustom("cEngine", "cEngineT"); catalogAvg(); });
+$("cEngine").addEventListener("change", () => { syncCustom("cEngine", "cEngineT"); if (usesEpa()){ avgTouched = false; epaRating().catch(epaFailed); } else catalogAvg(); });
 $("cAvg").addEventListener("input", () => { avgTouched = true; });
 function showVinNote(){
   $("cVinNote").hidden = !carVin;
@@ -1352,9 +1447,11 @@ function openCar(id){
   carVin = c ? c.vin || "" : ""; carVinData = c ? c.vinData : null;
   const y = new Date().getFullYear() + 1;
   $("cYear").innerHTML = `<option value="">Not sure</option>` + Array.from({length: y - 1979}, (_, i) => `<option>${y - i}</option>`).join("");
+  epaDown = false; epaVehicle = null;
+  $("cYear").value = c && c.year ? c.year : "";
   refreshCarForm(c ? {make: c.make, model: c.model, engine: c.engine} : {make: "", model: "", engine: ""});
   if (c){
-    $("cYear").value = c.year || ""; $("cPlate").value = c.plate || ""; $("cNick").value = c.nickname || "";
+    $("cPlate").value = c.plate || ""; $("cNick").value = c.nickname || "";
     $("cAvg").value = c.ratedKmpl ? +avgOut(c.ratedKmpl).toFixed(1) : "";
   }
   $("carTitle").textContent = c ? "Edit car" : "Add car";
@@ -1366,7 +1463,7 @@ function openCar(id){
 $("carForm").addEventListener("submit", async ev => {
   ev.preventDefault();
   const fail = t => { $("cMsg").hidden = false; $("cMsg").textContent = t; };
-  const make = pick("cMake", "cMakeT"), model = pick("cModel", "cModelT"), engine = pick("cEngine", "cEngineT");
+  const make = pick("cMake", "cMakeT"), model = carModel(), engine = carEngine();
   const nickname = $("cNick").value.trim(), avg = parseFloat($("cAvg").value);
   if (!make && !nickname) return fail("Choose the make, or give the car a nickname.");
   if (!store) return fail("You're offline. Cars need a connection to save.");
@@ -1465,9 +1562,9 @@ $("vUse").addEventListener("click", async () => {
     const engine = enginesFor(carMarket, make, model).map(x => x.engine).find(e => litres && e.startsWith(litres)) ||
       [litres, f.EngineCylinders ? f.EngineCylinders + " cyl" : "", f.FuelTypePrimary && !/gasoline/i.test(f.FuelTypePrimary) ? f.FuelTypePrimary : ""].filter(Boolean).join(" ");
     avgTouched = false;
+    if (f.ModelYear) $("cYear").value = f.ModelYear;
     refreshCarForm({make, model, engine});
     catalogAvg();
-    if (f.ModelYear) $("cYear").value = f.ModelYear;
     showVinNote();
     closeDialog(vinSheet);
   } else {
