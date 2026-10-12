@@ -96,21 +96,30 @@ const todayIso = () => iso(new Date());
 /* ---------- calculations ---------- */
 function compute(){
   const list = entries.filter(e => e && e.date && isFinite(e.odo) && onCar(e)).sort((a,b) => a.odo - b.odo || a.date.localeCompare(b.date));
-  const segs = [], segById = {}, prevById = {};
-  let anchor = null, pend = 0, prev = null;
+  const prevById = {};
+  list.forEach((e, i) => { if (i) prevById[e.id] = list[i - 1]; });
+  // Exact method: full tank to full tank, with partial fills added to the next full one.
+  let {segs, segById} = segments(list, false);
+  // No full-to-full tank yet (e.g. every fill-up is partial): estimate from all
+  // fill-ups instead, each one covering the distance since the previous fill-up.
+  const estimated = !segs.length;
+  if (estimated) ({segs, segById} = segments(list, true));
+  const overall = agg(segs);
+  return {list, segs, segById, prevById, overall, estimated};
+}
+function segments(list, allAsFull){
+  const segs = [], segById = {};
+  let anchor = null, pend = 0;
   for (const e of list){
-    if (prev) prevById[e.id] = prev;
-    prev = e;
     if (!(e.liters > 0)) continue;
-    if (e.partial){ if (anchor) pend += e.liters; continue; }
+    if (e.partial && !allAsFull){ if (anchor) pend += e.liters; continue; }
     if (anchor){
       const dist = e.odo - anchor.odo, lit = pend + e.liters;
       if (dist > 0 && dist < 3000){ const s = {id:e.id, date:e.date, dist, lit}; segs.push(s); segById[e.id] = s; }
     }
     anchor = e; pend = 0;
   }
-  const overall = agg(segs);
-  return {list, segs, segById, prevById, overall};
+  return {segs, segById};
 }
 function agg(segs){ const dist = sum(segs, s => s.dist), lit = sum(segs, s => s.lit); return {dist, lit, e: lit > 0 ? econ(dist, lit) : null}; }
 function rating(e, avg){ if (!avg || e == null) return ""; const r = e / avg; return r >= 1.05 ? "good" : r <= 0.95 ? "poor" : ""; }
@@ -173,14 +182,16 @@ function renderOverview(C, fills){
     $("gDelta").hidden = !overall.e;
     $("gDelta").textContent = Math.abs(pct) < 0.5 ? "Same as your overall average" : (pct > 0 ? "▲ " : "▼ ") + fmt(Math.abs(pct), 0) + "% " + (pct > 0 ? "better" : "worse") + " than overall";
     $("gDelta").style.color = pct >= 0.5 ? "var(--good)" : pct <= -0.5 ? "var(--warn)" : "";
-  } else { $("gCurMeta").textContent = "Needs two full fill-ups"; $("gDelta").hidden = true; }
+  } else { $("gCurMeta").textContent = "Needs two fill-ups"; $("gDelta").hidden = true; }
+  if (cur && C.estimated) $("gCurMeta").textContent = "Estimated from your last fill-up · " + fmt(dOut(cur.dist),0) + " " + dU() + " on " + fmt(vOut(cur.lit),2) + " " + vU() + " (no full tanks yet)";
 
   const ms = segs.filter(s => monthKey(s.date) === mk), ma = agg(ms);
   $("sMonLbl").textContent = "This month · " + MON[+mk.slice(5)-1];
   $("sMon").innerHTML = fmt(ma.e) + `<small>${econUnit()}</small>`;
-  $("sMonS").textContent = ms.length ? ms.length + " tanks · " + fmt(dOut(ma.dist),0) + " " + dU() : "No full tanks yet this month";
+  const unit = C.estimated ? " fill-ups" : " tanks";
+  $("sMonS").textContent = ms.length ? ms.length + unit + " · " + fmt(dOut(ma.dist),0) + " " + dU() + (C.estimated ? " · estimated" : "") : "No fill-ups to measure yet this month";
   $("sAll").innerHTML = fmt(overall.e) + `<small>${econUnit()}</small>`;
-  $("sAllS").textContent = segs.length ? segs.length + " tanks since " + longDate(segs[0].date) : "Needs two full fill-ups";
+  $("sAllS").textContent = segs.length ? (C.estimated ? "Estimated from " + (segs.length + 1) + " fill-ups since " : segs.length + " tanks since ") + longDate((C.prevById[segs[0].id] || {date: segs[0].date}).date) : "Needs two fill-ups";
   const priced = segs.filter(s => { const e = list.find(x => x.id === s.id); return e && e.paid > 0; });
   const pDist = sum(priced, s => s.dist), pCost = sum(priced, s => list.find(x => x.id === s.id).paid);
   $("sCpdLbl").textContent = "Cost per " + dU();
