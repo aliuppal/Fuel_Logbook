@@ -1753,8 +1753,10 @@ const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platfo
 const INSTALLED_KEY = "fuel-installed";
 const markedInstalled = () => { try{ return localStorage.getItem(INSTALLED_KEY) === "1"; }catch(e){ return false; } };
 if (isStandalone){ try{ localStorage.setItem(INSTALLED_KEY, "1"); }catch(e){} }
+// Installing is offered on phones and tablets only; on a computer it stays a website.
+const isMobile = isIOS || (navigator.userAgentData && navigator.userAgentData.mobile) || /android|mobile/i.test(navigator.userAgent);
 function renderInstall(){
-  const done = isStandalone || markedInstalled();
+  const done = isStandalone || markedInstalled() || !isMobile;
   $("installBtn").hidden = done || !installPrompt;
   $("iosHint").hidden = done || !isIOS;
   $("appPanel").hidden = done;
