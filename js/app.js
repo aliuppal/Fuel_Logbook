@@ -1700,19 +1700,57 @@ function showOffline(c){
 window.addEventListener("online", () => { if (currentUserId && store) reloadLog(); else if (currentUserId) location.reload(); });
 
 /* ---------- install ---------- */
+// The same "Get the app" card shows on the sign-in page and in Settings until the app
+// is installed: a one-tap Install button where the browser supports it (Android and
+// desktop Chrome / Edge), Add to Home Screen steps on iPhone, and a pointer otherwise.
 let installPrompt = null;
-window.addEventListener("beforeinstallprompt", ev => { ev.preventDefault(); installPrompt = ev; $("installBtn").hidden = false; });
-window.addEventListener("appinstalled", () => { installPrompt = null; $("installBtn").hidden = true; toast("Fuel Logbook installed"); });
-$("installBtn").addEventListener("click", async () => {
-  toggleMenu(false);
-  if (!installPrompt) return;
-  installPrompt.prompt();
-  await installPrompt.userChoice.catch(() => {});
-  installPrompt = null; $("installBtn").hidden = true;
-});
 const isStandalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
 const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-$("iosHint").hidden = !(isIOS && !isStandalone);
+const INSTALLED_KEY = "fuel-installed";
+const markedInstalled = () => { try{ return localStorage.getItem(INSTALLED_KEY) === "1"; }catch(e){ return false; } };
+if (isStandalone){ try{ localStorage.setItem(INSTALLED_KEY, "1"); }catch(e){} }
+function renderInstall(){
+  const done = isStandalone || markedInstalled();
+  $("installBtn").hidden = done || !installPrompt;
+  $("iosHint").hidden = done || !isIOS;
+  $("appPanel").hidden = done;
+  document.querySelectorAll("[data-install]").forEach(slot => {
+    slot.hidden = done;
+    if (done) return;
+    const how = installPrompt
+      ? `<button class="btn accent install-go" type="button" data-install-go>Install app</button>`
+      : isIOS
+        ? `<ol class="install-steps"><li>Tap <b>Share</b> <span aria-hidden="true">⬆︎</span> in Safari</li><li>Choose <b>Add to Home Screen</b></li><li>Tap <b>Add</b></li></ol>`
+        : `<p class="install-note">Open this page in <b>Chrome</b> on Android or desktop, or <b>Safari</b> on iPhone, then use <b>Install app</b> or <b>Add to Home Screen</b>.</p>`;
+    slot.innerHTML = `<div class="install-card">
+      <img src="icons/icon-192.png" width="44" height="44" alt="">
+      <div class="install-text"><b>Get the Fuel Logbook app</b><span>Opens full screen from your home screen and works offline. Your log stays in sync with the website.</span></div>
+      ${how}
+    </div>`;
+  });
+}
+async function promptInstall(){
+  if (!installPrompt) return;
+  installPrompt.prompt();
+  const choice = await installPrompt.userChoice.catch(() => null);
+  installPrompt = null;
+  if (choice && choice.outcome === "accepted"){ try{ localStorage.setItem(INSTALLED_KEY, "1"); }catch(e){} }
+  renderInstall();
+}
+// The browser only offers this while the app isn't installed (e.g. after an uninstall).
+window.addEventListener("beforeinstallprompt", ev => {
+  ev.preventDefault(); installPrompt = ev;
+  try{ localStorage.removeItem(INSTALLED_KEY); }catch(e){}
+  renderInstall();
+});
+window.addEventListener("appinstalled", () => {
+  installPrompt = null;
+  try{ localStorage.setItem(INSTALLED_KEY, "1"); }catch(e){}
+  renderInstall(); toast("Fuel Logbook installed");
+});
+$("installBtn").addEventListener("click", () => { toggleMenu(false); promptInstall(); });
+document.addEventListener("click", ev => { if (ev.target.closest("[data-install-go]")) promptInstall(); });
+renderInstall();
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
 
 /* ---------- init ---------- */

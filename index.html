@@ -43,6 +43,7 @@
     </button>
     <p class="signin-err" id="signinErr" role="alert" hidden></p>
     <p class="fine">Your log is private to your Google account.</p>
+    <div class="install-slot" data-install hidden></div>
   </div>
 </section>
 
@@ -257,6 +258,11 @@
     <div class="panel" id="carsPanel" hidden>
       <div class="panel-head"><h2>My cars</h2><button class="btn accent" type="button" id="carAdd"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 16V11l2-5h10l2 5v5M3 16h18v3h-3v-1.5H6V19H3zM5 11h14M7.5 13.5h1M15.5 13.5h1" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg> Add car</button></div>
       <div class="car-list" id="carList"></div>
+    </div>
+
+    <div class="panel install-panel" id="appPanel" hidden>
+      <h2>App</h2>
+      <div class="install-slot" data-install></div>
     </div>
 
     <div class="panel" id="profilePanel">

@@ -494,3 +494,15 @@ body{-webkit-tap-highlight-color:transparent;overscroll-behavior-y:none}
 .move-what{margin:0;font-size:14px;color:var(--muted)}
 .move-what b{color:var(--ink)}
 @media (max-width:640px){ .car-btn{max-width:170px} .car-menu{left:auto;right:0} }
+
+/* ---------- get the app ---------- */
+.install-slot{width:100%}
+.install-card{display:flex;align-items:center;flex-wrap:wrap;gap:10px 14px;background:var(--accent-soft);border:1px solid color-mix(in srgb,var(--accent) 40%,transparent);border-radius:14px;padding:12px 14px}
+.install-card img{flex:none;border-radius:11px}
+.install-text{display:grid;gap:2px;flex:1 1 200px;min-width:0}
+.install-text b{font-size:15px}
+.install-text span{font-size:13px;color:var(--muted)}
+.install-go{margin-left:auto}
+.install-steps{margin:0;padding-left:20px;display:grid;gap:2px;font-size:13.5px;flex-basis:100%}
+.install-note{margin:0;font-size:13px;color:var(--muted);flex-basis:100%}
+.signin-card .install-slot{margin-top:6px}
