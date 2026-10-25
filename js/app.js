@@ -1226,7 +1226,24 @@ function renderCars(C){
         </div>`).join("");
   }
 }
-function toggleCarMenu(open){ $("carMenu").hidden = !open; $("carBtn").setAttribute("aria-expanded", open); }
+// Opens a dropdown under its button and keeps it fully on screen (on phones the
+// header wraps, so the button can sit at either edge).
+function placeMenu(menu, btn, align){
+  const r = btn.getBoundingClientRect(), vw = document.documentElement.clientWidth, gap = 16;
+  menu.style.position = "fixed"; menu.style.right = "auto"; menu.style.maxWidth = (vw - gap * 2) + "px";
+  menu.style.top = Math.round(r.bottom + 8) + "px";
+  const w = menu.offsetWidth;
+  let left = align === "left" ? r.left : r.right - w;
+  left = Math.max(gap, Math.min(left, vw - gap - w));
+  menu.style.left = Math.round(left) + "px";
+}
+function toggleCarMenu(open){
+  $("carMenu").hidden = !open; $("carBtn").setAttribute("aria-expanded", open);
+  if (open) placeMenu($("carMenu"), $("carBtn"), "left");
+}
+// A fixed-position menu would stay put while the page scrolls, so close it instead.
+window.addEventListener("scroll", () => { toggleCarMenu(false); toggleMenu(false); }, {passive: true});
+window.addEventListener("resize", () => { toggleCarMenu(false); toggleMenu(false); });
 $("carBtn").addEventListener("click", ev => { ev.stopPropagation(); toggleCarMenu($("carMenu").hidden); });
 document.addEventListener("click", ev => { if (!ev.target.closest(".car-pick")) toggleCarMenu(false); });
 document.addEventListener("keydown", ev => { if (ev.key === "Escape") toggleCarMenu(false); });
@@ -1673,7 +1690,10 @@ function showProfile(p){
   $("accountSince").textContent = "Member since " + MONL[d.getMonth()] + " " + d.getFullYear();
   $("accountSince").hidden = false;
 }
-function toggleMenu(open){ $("accountMenu").hidden = !open; $("accountBtn").setAttribute("aria-expanded", open); }
+function toggleMenu(open){
+  $("accountMenu").hidden = !open; $("accountBtn").setAttribute("aria-expanded", open);
+  if (open) placeMenu($("accountMenu"), $("accountBtn"), "right");
+}
 $("accountBtn").addEventListener("click", ev => { ev.stopPropagation(); toggleMenu($("accountMenu").hidden); });
 document.addEventListener("click", ev => { if (!ev.target.closest(".account")) toggleMenu(false); });
 document.addEventListener("keydown", ev => { if (ev.key === "Escape") toggleMenu(false); });
