@@ -50,7 +50,7 @@ Code: https://github.com/aliuppal/Fuel_Logbook
 
 ### 1. Supabase
 
-1. *SQL Editor*: run each file in `supabase/migrations/` in order (`20260929000000_fuel_logbook.sql`, then `20260930000000_fuel_currency_codes.sql`, then `20261001000000_fuel_profiles.sql`, then `20261002000000_fuel_prices_and_card_allowance.sql`, then `20261003000000_fuel_card_limit.sql`, then `20261004000000_fuel_maintenance.sql`, then `20261009000000_fuel_cars_and_profile.sql`).
+1. *SQL Editor*: run each file in `supabase/migrations/` in order (`20260929000000_fuel_logbook.sql`, then `20260930000000_fuel_currency_codes.sql`, then `20261001000000_fuel_profiles.sql`, then `20261002000000_fuel_prices_and_card_allowance.sql`, then `20261003000000_fuel_card_limit.sql`, then `20261004000000_fuel_maintenance.sql`, then `20261009000000_fuel_cars_and_profile.sql`, then `20261026000000_fuel_grade.sql`).
 2. `js/config.js` holds the project's **Project URL** and **anon / publishable** key
    (*Project Settings → API*). Never use the `service_role` key.
 3. *Authentication → URL Configuration*:

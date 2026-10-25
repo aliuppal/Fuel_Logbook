@@ -255,7 +255,7 @@ function entryRow(e, C){
   const d = pd(e.date);
   const ev = s ? econ(s.dist, s.lit) : null;
   const since = prev ? " · +" + fmt(dOut(e.odo - prev.odo), 0) + " " + dU() : "";
-  const l2 = isFill ? fmt(vOut(e.liters), 2) + " " + vU() + (e.paid > 0 ? " · " + money(e.paid / vOut(e.liters)) + "/" + vU() : "") : "Odometer reading";
+  const l2 = isFill ? fmt(vOut(e.liters), 2) + " " + vU() + (e.grade && e.grade !== "regular" ? " · " + GRADES[e.grade] : "") + (e.paid > 0 ? " · " + money(e.paid / vOut(e.liters)) + "/" + vU() : "") : "Odometer reading";
   const pay = !isFill ? '<span class="chip read">Reading</span>'
     : `${e.partial ? '<span class="chip part">Partial</span>' : ""}<button class="chip card-only ${isCard(e) ? "card" : "self"}" data-toggle="${esc(e.id)}" title="Switch who paid">${isCard(e) ? "Fuel card" : "Me"}</button>` +
       (e.paid > 0 ? `<button class="price" data-price="${esc(e.id)}">${money(e.paid)}</button>` : `<button class="price add" data-price="${esc(e.id)}">+ price</button>`);
@@ -955,7 +955,7 @@ function saveSettings(){
     try{ await store.saveSettings(settings); keepOffline(); }catch(e){ toast("Couldn't save settings. Try again."); }
   }, 500);
 }
-const bodyOf = e => ({date:e.date, odo:e.odo, liters:e.liters ?? null, paid:e.paid ?? null, payer:e.payer || "self", partial:!!e.partial, note:e.note || "", carId:e.carId || null});
+const bodyOf = e => ({date:e.date, odo:e.odo, liters:e.liters ?? null, paid:e.paid ?? null, payer:e.payer || "self", partial:!!e.partial, note:e.note || "", carId:e.carId || null, grade:e.grade || "regular"});
 
 /* ---------- sheet ---------- */
 const sheet = $("sheet");
@@ -978,9 +978,10 @@ function openSheet(id, focus, date){
     $("fPpu").value = e.paid > 0 && e.liters > 0 ? (e.paid / vOut(e.liters)).toFixed(3) : "";
     setPayer(isCard(e) ? "card" : "self");
     $("fPartial").checked = !!e.partial; $("fNote").value = e.note || "";
+    setGrade(e.grade || "regular");
     $("fSubmit").textContent = "Save changes"; $("fDelete").hidden = false;
   } else {
-    $("sheetTitle").textContent = "Add fill-up"; $("fDate").value = date || todayIso(); payerTouched = false; autoPayer();
+    $("sheetTitle").textContent = "Add fill-up"; $("fDate").value = date || todayIso(); payerTouched = false; autoPayer(); setGrade(lastGrade());
     $("fSubmit").textContent = "Add fill-up"; $("fDelete").hidden = true;
   }
   lastPriceEdit = "paid";
@@ -1030,10 +1031,33 @@ $("fPpu").addEventListener("input", () => { lastPriceEdit = "ppu"; autoPpu = fal
 let autoPpu = false;
 function autoPrice(){
   if (editingId || !autoPpu) return;
+  // The price list is for normal petrol, so other grades are left for you to type.
+  if (formGrade() !== "regular"){ $("fPpu").value = ""; $("fPaid").value = ""; return; }
   const p = priceOn(priceSeries(compute().list), $("fDate").value || todayIso());
   if (p == null) return;
   $("fPpu").value = perUnit(p).toFixed(2); lastPriceEdit = "ppu"; syncPrice();
 }
+
+/* fuel grade: a High octane tick for Pakistan cars, the pump grades for US cars */
+const GRADES = {regular: "Regular", high_octane: "High octane", midgrade: "Mid-grade", premium: "Premium", diesel: "Diesel", e85: "E85"};
+const GRADE_OPTIONS = {
+  US: [["regular", "Regular (87)"], ["midgrade", "Mid-grade (89)"], ["premium", "Premium (91–93)"], ["diesel", "Diesel"], ["e85", "E85"]],
+  other: [["regular", "Regular"], ["premium", "Premium"], ["diesel", "Diesel"]],
+};
+const fuelMarket = () => (activeCar() && activeCar().market) || regionMarket();
+function setGrade(grade){
+  const pk = fuelMarket() === "PK";
+  $("fOctaneRow").hidden = !pk; $("fGradeRow").hidden = pk;
+  if (pk){ $("fOctane").checked = grade === "high_octane"; return; }
+  const opts = GRADE_OPTIONS[fuelMarket() === "US" ? "US" : "other"];
+  $("fGrade").innerHTML = opts.map(([v, label]) => `<option value="${v}">${label}</option>`).join("");
+  $("fGrade").value = opts.some(([v]) => v === grade) ? grade : "regular";
+}
+const formGrade = () => fuelMarket() === "PK" ? ($("fOctane").checked ? "high_octane" : "regular") : $("fGrade").value || "regular";
+// New fill-ups start with the grade the car used last time.
+const lastGrade = () => (compute().list.filter(e => e.liters > 0).pop() || {}).grade || "regular";
+$("fOctane").addEventListener("change", autoPrice);
+$("fGrade").addEventListener("change", autoPrice);
 ["fOdo","fDate","fVol"].forEach(id => $(id).addEventListener("input", () => { if (id === "fVol") syncPrice(); if (id === "fDate") autoPrice(); if (id !== "fOdo") autoPayer(); updatePreview(); }));
 $("fPartial").addEventListener("change", updatePreview);
 document.querySelectorAll(".payer button").forEach(b => b.addEventListener("click", () => { payerTouched = true; setPayer(b.dataset.p); }));
@@ -1058,7 +1082,7 @@ $("form").addEventListener("submit", async ev => {
   const volRaw = parseFloat($("fVol").value), paid = parseFloat($("fPaid").value);
   const body = {date, odo: Math.round(settings.odoUnit === "mi" ? odoRaw * KM_PER_MI : odoRaw),
     liters: volRaw > 0 ? +vIn(volRaw).toFixed(3) : null, paid: paid > 0 ? +paid.toFixed(2) : null,
-    payer, partial: $("fPartial").checked, note: $("fNote").value.trim()};
+    payer, partial: $("fPartial").checked, note: $("fNote").value.trim(), grade: formGrade()};
   const wasEdit = !!editingId;
   $("fSubmit").disabled = true;
   try{ await writeEntry(editingId, body); closeSheet(); toast(wasEdit ? "Changes saved" : "Fill-up added"); }

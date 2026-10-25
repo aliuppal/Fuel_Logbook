@@ -64,6 +64,7 @@ const fromRow = (r) => ({
   partial: r.partial_fill,
   note: r.note,
   carId: r.car_id ?? null,
+  grade: r.fuel_grade ?? "regular",
 });
 
 const toRow = (e) => ({
@@ -76,6 +77,7 @@ const toRow = (e) => ({
   note: e.note || "",
   // Only sent once the cars migration has run (the app then always has a car selected).
   ...(e.carId ? { car_id: e.carId } : {}),
+  ...(e.grade ? { fuel_grade: e.grade } : {}),
 });
 
 const ruleFromRow = (r) => ({
@@ -135,11 +137,21 @@ export class FuelStore {
   // Pass an id to re-create a deleted entry (undo); otherwise the database makes one.
   async addEntry(entry, id) {
     const row = { ...toRow(entry), ...(id ? { id } : {}) };
-    return fromRow(check(await this.supabase.from("fuel_fillups").insert(row).select(FILLUP_COLUMNS).single()));
+    return this.saveFillup(row, (r) => this.supabase.from("fuel_fillups").insert(r));
   }
 
   async updateEntry(id, entry) {
-    return fromRow(check(await this.supabase.from("fuel_fillups").update(toRow(entry)).eq("id", id).select(FILLUP_COLUMNS).single()));
+    return this.saveFillup(toRow(entry), (r) => this.supabase.from("fuel_fillups").update(r).eq("id", id));
+  }
+
+  // Saves without the fuel grade if that column doesn't exist yet (migration not run).
+  async saveFillup(row, write) {
+    let res = await write(row).select(FILLUP_COLUMNS).single();
+    if (res.error && "fuel_grade" in row && /fuel_grade/.test(res.error.message || "")) {
+      const { fuel_grade, ...rest } = row;
+      res = await write(rest).select(FILLUP_COLUMNS).single();
+    }
+    return fromRow(check(res));
   }
 
   async setPayer(id, payer) {
